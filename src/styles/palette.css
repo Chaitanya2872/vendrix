@@ -1,0 +1,44 @@
+:root {
+  --brand-background: #f7f6f5;
+  --brand-surface: #ffffff;
+  --brand-primary: #c39c67;
+  --brand-primary-dark: #a77d46;
+  --brand-forest: #234b35;
+  --brand-forest-light: #356348;
+
+  --brand-text: #1f2d24;
+  --brand-text-muted: #6d746f;
+  --brand-border: #e5ddce;
+  --brand-sidebar-width: 260px;
+  --brand-topbar-height: 64px;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  background: var(--brand-background);
+  color: var(--brand-text);
+  font-family: "Geist", Inter, system-ui, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+@theme {
+  --color-brand-background: #f7f6f5;
+  --color-brand-surface: #ffffff;
+  --color-brand-gold: #c39c67;
+  --color-brand-gold-dark: #8e6430;
+  --color-brand-forest: #234b35;
+  --color-brand-forest-light: #356348;
+  --color-brand-text: #1f2d24;
+  --color-brand-muted: #6d746f;
+  --color-brand-border: #e5ddce;
+}
