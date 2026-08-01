@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "@fontsource-variable/manrope";
 @import "./styles/palette.css";
 
 html,
@@ -15,7 +16,7 @@ body {
   overflow-x: hidden;
   background-color: var(--color-brand-background);
   color: var(--color-brand-text);
-  font-family: "Geist", Inter, system-ui, sans-serif;
+  font-family: "Manrope Variable", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 }
 
 * {
