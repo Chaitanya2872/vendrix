@@ -1,11 +1,13 @@
 import { BrowserRouter } from "react-router-dom";
-import { AppRoutes } from "@/routes/AppRoutes.tsx";
-import React from "react";
+import { VendorProvider } from "@/contexts/VendorContext";
+import { AppRoutes } from "@/routes/AppRoutes";
 
 function App() {
   return (
     <BrowserRouter>
-      <AppRoutes />
+      <VendorProvider>
+        <AppRoutes />
+      </VendorProvider>
     </BrowserRouter>
   );
 }

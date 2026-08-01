@@ -1,0 +1,10 @@
+import type { Vendor } from "@/types/vendor";
+
+export const mockVendors: Vendor[] = [
+  { id:"1", code:"VEN-001", name:"Apex Technologies", category:"IT Services", contactPerson:"Ravi Kumar", email:"ravi@apextech.in", phone:"+91 98765 43210", gstin:"36ABCDE1234F1Z5", address:"HITEC City", city:"Hyderabad", state:"Telangana", status:"Active", rating:4.8, registeredOn:"2026-07-31", notes:"Preferred technology partner." },
+  { id:"2", code:"VEN-002", name:"Greenline Supplies", category:"Office Supplies", contactPerson:"Priya Sharma", email:"priya@greenline.in", phone:"+91 98480 12345", gstin:"29ABCDE5678G1Z2", address:"Whitefield", city:"Bengaluru", state:"Karnataka", status:"Pending", rating:4.2, registeredOn:"2026-07-30", notes:"Onboarding documents under review." },
+  { id:"3", code:"VEN-003", name:"Nova Industrial Works", category:"Manufacturing", contactPerson:"Arun Reddy", email:"arun@novaindustrial.in", phone:"+91 99887 66554", gstin:"33ABCDE9012H1Z8", address:"Guindy", city:"Chennai", state:"Tamil Nadu", status:"Active", rating:4.6, registeredOn:"2026-07-29", notes:"Annual compliance completed." },
+  { id:"4", code:"VEN-004", name:"Vertex Consulting", category:"Consulting", contactPerson:"Neha Verma", email:"neha@vertex.in", phone:"+91 91234 56789", gstin:"27ABCDE3456J1Z1", address:"Andheri East", city:"Mumbai", state:"Maharashtra", status:"Inactive", rating:3.9, registeredOn:"2026-07-28", notes:"Contract currently inactive." },
+  { id:"5", code:"VEN-005", name:"BlueWave Logistics", category:"Logistics", contactPerson:"Suresh Rao", email:"suresh@bluewave.in", phone:"+91 90000 11223", gstin:"37ABCDE7890K1Z7", address:"Madhurawada", city:"Visakhapatnam", state:"Andhra Pradesh", status:"Active", rating:4.5, registeredOn:"2026-07-27", notes:"Primary regional logistics vendor." },
+  { id:"6", code:"VEN-006", name:"Prime Facility Services", category:"Facility Management", contactPerson:"Anil Mehta", email:"anil@primefacility.in", phone:"+91 95555 77889", gstin:"27ABCDE2468L1Z4", address:"Hinjewadi", city:"Pune", state:"Maharashtra", status:"Pending", rating:4.1, registeredOn:"2026-07-26", notes:"Awaiting finance verification." },
+];

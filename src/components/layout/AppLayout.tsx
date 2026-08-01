@@ -1,3 +1,4 @@
+// AppLayout.tsx
 import React from "react";
 import { useState } from "react";
 import { Outlet } from "react-router-dom";
@@ -8,7 +9,7 @@ export function AppLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   return (
-    <div className="min-h-screen w-full bg-brand-background">
+    <div className="min-h-screen w-full bg-gradient-to-br from-[#f8faf7] via-white to-[#f2f5f2]">
       <Sidebar
         open={sidebarOpen}
         onClose={() => setSidebarOpen(false)}

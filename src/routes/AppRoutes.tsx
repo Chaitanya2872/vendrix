@@ -2,6 +2,8 @@ import { Navigate, Route, Routes } from "react-router-dom";
 import { AppLayout } from "@/components/layout/AppLayout.tsx";
 import { DashboardPage } from "@/pages/Dashboard/DashboardPage.tsx";
 import React from "react";
+import { VendorsPage } from "@/pages/Vendors/VendorsPage.tsx";
+import { DocumentsPage } from "@/pages/Documents/DocumentsPage.tsx";
 
 function PlaceholderPage({ title }: { title: string }) {
   return (
@@ -23,20 +25,15 @@ export function AppRoutes() {
       <Route element={<AppLayout />}>
         <Route index element={<DashboardPage />} />
 
-        <Route
-          path="vendors"
-          element={<PlaceholderPage title="Vendors" />}
-        />
+        {/* Add the Vendors route here */}
+        <Route path="vendors" element={<VendorsPage />} />
 
         <Route
           path="contracts"
           element={<PlaceholderPage title="Contracts" />}
         />
 
-        <Route
-          path="documents"
-          element={<PlaceholderPage title="Documents" />}
-        />
+        <Route path="documents" element={<DocumentsPage />} />
 
         <Route
           path="users"
