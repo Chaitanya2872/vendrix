@@ -1,7 +1,7 @@
 import { ArrowLeft } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import { VendorForm } from "@/components/vendors/VendorForm";
-import { useVendors } from "@/context/VendorContext";
+import { useVendors } from "@/contexts/VendorContext";
 
 export function AddVendorPage() {
   const navigate = useNavigate(); const { addVendor } = useVendors();

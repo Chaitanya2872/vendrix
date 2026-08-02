@@ -9,7 +9,7 @@ export function AppLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   return (
-    <div className="min-h-screen w-full bg-gradient-to-br from-[#f8faf7] via-white to-[#f2f5f2]">
+    <div className="min-h-screen w-full bg-brand-background">
       <Sidebar
         open={sidebarOpen}
         onClose={() => setSidebarOpen(false)}

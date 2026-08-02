@@ -25,15 +25,13 @@ export function AppRoutes() {
       <Route element={<AppLayout />}>
         <Route index element={<DashboardPage />} />
 
-        {/* Add the Vendors route here */}
         <Route path="vendors" element={<VendorsPage />} />
 
-        <Route
-          path="contracts"
-          element={<PlaceholderPage title="Contracts" />}
-        />
+        <Route path="vehicles" element={<PlaceholderPage title="Vehicles" />} />
 
         <Route path="documents" element={<DocumentsPage />} />
+
+        <Route path="invoices" element={<PlaceholderPage title="Invoices & Billing" />} />
 
         <Route
           path="users"
@@ -44,6 +42,8 @@ export function AppRoutes() {
           path="settings"
           element={<PlaceholderPage title="Settings" />}
         />
+
+        <Route path="reports" element={<PlaceholderPage title="Reports" />} />
       </Route>
 
       <Route path="*" element={<Navigate to="/" replace />} />

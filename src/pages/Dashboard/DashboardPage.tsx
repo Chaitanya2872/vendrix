@@ -1,309 +1,33 @@
-import {
-  AlertTriangle,
-  ArrowUpRight,
-  Building2,
-  CheckCircle2,
-  Clock3,
-  FileText,
-  Plus
-} from "lucide-react";
+import { useState } from "react";
+import { ArrowRight, BellRing, Building2, CheckCircle2, ChevronRight, CircleAlert, Clock3, FileSearch, IndianRupee, ScanLine, ShieldCheck, UserRoundCheck, WalletCards } from "lucide-react";
 
-const statistics = [
-  {
-    label: "Total vendors",
-    value: "248",
-    description: "+12 this month",
-    icon: Building2,
-    iconStyle: "bg-emerald-50 text-brand-forest",
-  },
-  {
-    label: "Active contracts",
-    value: "184",
-    description: "74% of vendors",
-    icon: FileText,
-    iconStyle: "bg-blue-50 text-blue-700",
-  },
-  {
-    label: "Pending approvals",
-    value: "16",
-    description: "Requires attention",
-    icon: Clock3,
-    iconStyle: "bg-amber-50 text-amber-700",
-  },
-  {
-    label: "Compliant vendors",
-    value: "221",
-    description: "89.1% compliance",
-    icon: CheckCircle2,
-    iconStyle: "bg-green-50 text-green-700",
-  },
+const kpis = [
+  { label: "Awaiting approval", value: "16", context: "5 submitted since yesterday", icon: UserRoundCheck, tone: "amber" },
+  { label: "Expiring within 30 days", value: "24", context: "8 require action this week", icon: BellRing, tone: "rose" },
+  { label: "Vehicles compliant", value: "186 / 204", context: "91.2% fleet coverage", icon: ShieldCheck, tone: "green" },
+  { label: "Invoices awaiting payment", value: "12", context: "₹4.86L outstanding", icon: WalletCards, tone: "blue" },
 ];
-
-const vendors = [
-  {
-    name: "Apex Technologies",
-    initials: "AT",
-    category: "IT Services",
-    status: "Approved",
-    date: "31 Jul 2026",
-  },
-  {
-    name: "Greenline Supplies",
-    initials: "GS",
-    category: "Office Supplies",
-    status: "Pending",
-    date: "30 Jul 2026",
-  },
-  {
-    name: "Nova Industrial Works",
-    initials: "NW",
-    category: "Manufacturing",
-    status: "Approved",
-    date: "29 Jul 2026",
-  },
-  {
-    name: "Vertex Consulting",
-    initials: "VC",
-    category: "Consulting",
-    status: "Review",
-    date: "28 Jul 2026",
-  },
+const queue = [
+  { type: "Approval", title: "Approve vendor profile: Northstar Logistics", detail: "GST, PAN and bank cheque are ready for final review.", owner: "AR", due: "Due in 45 min", level: "Critical", action: "Review vendor", color: "rose" },
+  { type: "OCR exception", title: "Verify GST extraction for Metro Haulage", detail: "GSTIN character 11 could not be confidently read from the uploaded certificate.", owner: "SK", due: "Due today", level: "High", action: "Review extraction", color: "amber" },
+  { type: "Vehicle compliance", title: "Renew insurance for MH 12 QP 7842", detail: "Insurance certificate expires tomorrow. RC remains valid until Jan 2027.", owner: "PM", due: "Tomorrow", level: "High", action: "View vehicle", color: "amber" },
+  { type: "Reconciliation", title: "Match invoice INV-2048 to payment", detail: "₹84,250 received from Apex Freight; reference is awaiting confirmation.", owner: "NK", due: "Due Fri", level: "Normal", action: "Reconcile", color: "green" },
 ];
-
-const attentionItems = [
-  {
-    title: "8 documents expire soon",
-    description: "Within the next 30 days",
-    color: "bg-amber-50 text-amber-700",
-  },
-  {
-    title: "16 approvals pending",
-    description: "Awaiting internal review",
-    color: "bg-blue-50 text-blue-700",
-  },
-  {
-    title: "4 incomplete profiles",
-    description: "Missing mandatory information",
-    color: "bg-rose-50 text-rose-700",
-  },
-];
-
-function getStatusClasses(status: string) {
-  switch (status) {
-    case "Approved":
-      return "bg-emerald-50 text-emerald-700 ring-emerald-600/10";
-
-    case "Pending":
-      return "bg-amber-50 text-amber-700 ring-amber-600/10";
-
-    default:
-      return "bg-blue-50 text-blue-700 ring-blue-600/10";
-  }
-}
+const expiries = [["Insurance · MH 12 QP 7842", "Northstar Logistics", "Tomorrow", true], ["RC · KA 05 MV 1920", "SwiftLine Transport", "06 Aug", true], ["PAN certificate", "Greenway Carriers", "11 Aug", false], ["Fitness certificate · DL 01 AA 3910", "Metro Haulage", "16 Aug", false]];
+const audits = [["AR", "Aditi Rao approved vendor address", "Northstar Logistics", "12 min ago"], ["SK", "Sonal Kumar uploaded", "RC certificate · MH 12 QP 7842", "38 min ago"], ["NK", "Naveen K created invoice", "INV-2051 · ₹1,26,500", "1 hr ago"], ["PM", "Priya Mehta changed vehicle status", "KA 05 MV 1920 · Under review", "2 hrs ago"]];
+const toneClasses: Record<string, string> = { amber: "bg-amber-50 text-amber-800 ring-amber-200", rose: "bg-rose-50 text-rose-800 ring-rose-200", green: "bg-emerald-50 text-emerald-800 ring-emerald-200", blue: "bg-sky-50 text-sky-800 ring-sky-200" };
 
 export function DashboardPage() {
-  return (
-    <div className="w-full space-y-5">
-      {/* Page heading */}
-      <section className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
-        <div>
-          <h1 className="m-0 text-xl font-semibold tracking-tight text-brand-forest md:text-2xl">
-            Welcome back, Chaitanya
-          </h1>
-
-          <p className="mb-0 mt-1 text-sm text-brand-muted">
-            Here is an overview of your vendor ecosystem.
-          </p>
-        </div>
-
-        <button
-  type="button"
-  className="inline-flex items-center gap-3 rounded-xl bg-brand-forest px-3 py-1.5 text-sm font-semibold text-white shadow-md transition-all duration-200 hover:-translate-y-0.5 hover:bg-brand-forest-light hover:shadow-lg"
->
-  <span className="flex h-7 w-7 items-center justify-center rounded-full bg-white text-brand-forest">
-    <Plus size={16} strokeWidth={2.5} />
-  </span>
-
-  Add New Vendor
-</button>
-      </section>
-
-      {/* KPI cards */}
-      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        {statistics.map((statistic) => {
-          const Icon = statistic.icon;
-
-          return (
-            <article
-              key={statistic.label}
-              className="group flex h-32 flex-col justify-between rounded-xl border border-brand-border bg-white p-4 shadow-sm transition duration-200 hover:-translate-y-0.5 hover:shadow-md"
-            >
-              <div className="flex items-start justify-between">
-                <div
-                  className={`grid h-9 w-9 place-items-center rounded-lg ${statistic.iconStyle}`}
-                >
-                  <Icon className="h-4.5 w-4.5" strokeWidth={1.8} />
-                </div>
-
-                <ArrowUpRight className="h-4 w-4 text-brand-muted transition group-hover:text-brand-forest" />
-              </div>
-
-              <div className="flex items-end justify-between gap-3">
-                <div>
-                  <p className="m-0 text-2xl font-semibold leading-none tracking-tight text-brand-forest">
-                    {statistic.value}
-                  </p>
-
-                  <p className="mb-0 mt-1.5 text-sm font-medium text-brand-text">
-                    {statistic.label}
-                  </p>
-                </div>
-
-                <p className="m-0 hidden whitespace-nowrap text-xs text-brand-muted 2xl:block">
-                  {statistic.description}
-                </p>
-              </div>
-            </article>
-          );
-        })}
-      </section>
-
-      {/* Main dashboard content */}
-      <section className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_300px]">
-        {/* Recent vendors table */}
-        <article className="min-w-0 overflow-hidden rounded-xl border border-brand-border bg-white shadow-sm">
-          <div className="flex items-center justify-between border-b border-brand-border px-5 py-4">
-            <div>
-              <h2 className="m-0 text-base font-semibold text-brand-forest">
-                Recently added vendors
-              </h2>
-
-              <p className="mb-0 mt-1 text-xs text-brand-muted">
-                Latest vendor onboarding activity
-              </p>
-            </div>
-
-            <button
-              type="button"
-              className="rounded-lg px-3 py-2 text-sm font-medium text-brand-gold-dark transition hover:bg-brand-background"
-            >
-              View all
-            </button>
-          </div>
-
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-175 border-collapse text-left">
-              <thead className="bg-brand-background/50">
-                <tr className="text-xs uppercase tracking-wide text-brand-muted">
-                  <th className="px-5 py-3 font-medium">Vendor</th>
-                  <th className="px-5 py-3 font-medium">Category</th>
-                  <th className="px-5 py-3 font-medium">Status</th>
-                  <th className="px-5 py-3 font-medium">Added</th>
-                </tr>
-              </thead>
-
-              <tbody>
-                {vendors.map((vendor) => (
-                  <tr
-                    key={vendor.name}
-                    className="border-t border-brand-border transition hover:bg-brand-background/40"
-                  >
-                    <td className="px-5 py-3.5">
-                      <div className="flex items-center gap-3">
-                        <div className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-brand-background text-xs font-semibold text-brand-forest">
-                          {vendor.initials}
-                        </div>
-
-                        <span className="whitespace-nowrap text-sm font-medium text-brand-text">
-                          {vendor.name}
-                        </span>
-                      </div>
-                    </td>
-
-                    <td className="px-5 py-3.5 text-sm text-brand-muted">
-                      {vendor.category}
-                    </td>
-
-                    <td className="px-5 py-3.5">
-                      <span
-                        className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset ${getStatusClasses(
-                          vendor.status,
-                        )}`}
-                      >
-                        {vendor.status}
-                      </span>
-                    </td>
-
-                    <td className="whitespace-nowrap px-5 py-3.5 text-sm text-brand-muted">
-                      {vendor.date}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          <div className="flex items-center justify-between border-t border-brand-border px-5 py-3">
-            <p className="m-0 text-xs text-brand-muted">
-              Showing 4 of 248 vendors
-            </p>
-
-            <button
-              type="button"
-              className="text-xs font-medium text-brand-forest hover:underline"
-            >
-              Manage vendors
-            </button>
-          </div>
-        </article>
-
-        {/* Attention panel */}
-        <article className="rounded-xl border border-brand-border bg-white p-5 shadow-sm">
-          <div className="flex items-center gap-3">
-            <div className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-amber-50 text-amber-700">
-              <AlertTriangle className="h-5 w-5" strokeWidth={1.8} />
-            </div>
-
-            <div>
-              <h2 className="m-0 text-base font-semibold text-brand-forest">
-                Attention required
-              </h2>
-
-              <p className="m-0 mt-0.5 text-xs text-brand-muted">
-                Compliance and approvals
-              </p>
-            </div>
-          </div>
-
-          <div className="mt-5 space-y-3">
-            {attentionItems.map((item, index) => (
-              <button
-                key={item.title}
-                type="button"
-                className="group flex w-full items-center gap-3 rounded-lg border border-transparent p-3 text-left transition hover:border-brand-border hover:bg-brand-background/50"
-              >
-                <div
-                  className={`grid h-8 w-8 shrink-0 place-items-center rounded-lg text-xs font-semibold ${item.color}`}
-                >
-                  {index + 1}
-                </div>
-
-                <div className="min-w-0">
-                  <p className="m-0 truncate text-sm font-medium text-brand-text">
-                    {item.title}
-                  </p>
-
-                  <p className="mb-0 mt-0.5 text-xs text-brand-muted">
-                    {item.description}
-                  </p>
-                </div>
-
-                <ArrowUpRight className="ml-auto h-4 w-4 shrink-0 text-brand-muted transition group-hover:text-brand-forest" />
-              </button>
-            ))}
-          </div>
-        </article>
-      </section>
-    </div>
-  );
+  const [filter, setFilter] = useState("All"); const [plate, setPlate] = useState("MH 12 QP 7842"); const [matched, setMatched] = useState(true); const [notice, setNotice] = useState("");
+  const shownQueue = filter === "All" ? queue : queue.filter((item) => item.type === filter);
+  const announce = (message: string) => { setNotice(message); window.setTimeout(() => setNotice(""), 3000); };
+  return <div className="mx-auto w-full max-w-[1500px] space-y-5 pb-8">
+    {notice && <div role="status" className="fixed right-5 top-20 z-50 rounded-lg border border-brand-border bg-brand-forest px-4 py-3 text-sm font-medium text-white shadow-xl">{notice}</div>}
+    <header className="flex flex-col gap-4 border-b border-brand-border pb-5 sm:flex-row sm:items-end sm:justify-between"><div><p className="m-0 text-xs font-bold uppercase tracking-[0.18em] text-brand-gold-dark">Monday, 3 August 2026 · Operations desk</p><h1 className="mt-1 text-2xl font-semibold tracking-tight text-brand-forest md:text-3xl">Operations overview</h1><p className="mb-0 mt-1 text-sm text-brand-muted">Your morning control tower for vendor, fleet and payment readiness.</p></div><button onClick={() => announce("Vendor onboarding form opened")} className="inline-flex items-center justify-center gap-2 rounded-lg bg-brand-forest px-4 py-2.5 text-sm font-bold text-white transition hover:bg-brand-forest-light focus:outline-none focus:ring-2 focus:ring-brand-gold focus:ring-offset-2"><Building2 size={17}/> Add vendor</button></header>
+    <section aria-label="Operational metrics" className="grid gap-px overflow-hidden rounded-xl border border-brand-border bg-brand-border sm:grid-cols-2 xl:grid-cols-4">{kpis.map(({ label, value, context, icon: Icon, tone }) => <article key={label} className="bg-white p-4"><div className="flex items-start justify-between"><p className="m-0 text-sm font-semibold text-brand-text">{label}</p><span className={`grid h-8 w-8 place-items-center rounded-md ${toneClasses[tone]}`}><Icon size={16}/></span></div><p className="mb-1 mt-5 text-2xl font-semibold tracking-tight text-brand-forest">{value}</p><p className="m-0 text-xs text-brand-muted">{context}</p></article>)}</section>
+    <section className="grid gap-5 xl:grid-cols-[minmax(0,1.55fr)_minmax(300px,.85fr)]"><article className="overflow-hidden rounded-xl border border-brand-border bg-white shadow-sm"><div className="border-b border-brand-border px-5 pb-0 pt-5"><div className="flex flex-wrap items-start justify-between gap-3"><div><div className="flex items-center gap-2"><span className="h-5 w-1 rounded-full bg-brand-gold"/><h2 className="m-0 text-lg font-semibold text-brand-forest">Priority queue</h2></div><p className="mb-0 mt-1 text-sm text-brand-muted">The actions that move the operation forward today.</p></div><span className="rounded-full bg-brand-background px-3 py-1 text-xs font-bold text-brand-forest">{shownQueue.length} open</span></div><div className="mt-4 flex gap-1 overflow-x-auto">{["All", "Approval", "OCR exception", "Vehicle compliance", "Reconciliation"].map((item) => <button key={item} onClick={() => setFilter(item)} className={`whitespace-nowrap border-b-2 px-3 py-2.5 text-xs font-bold transition ${filter === item ? "border-brand-forest text-brand-forest" : "border-transparent text-brand-muted hover:text-brand-forest"}`}>{item}</button>)}</div></div><ol className="m-0 list-none divide-y divide-brand-border p-0">{shownQueue.map((item, i) => <li key={item.title} className="group relative grid gap-3 px-5 py-4 sm:grid-cols-[28px_minmax(0,1fr)_auto] sm:items-center"><div className="relative hidden h-full sm:block"><span className={`relative z-10 grid h-7 w-7 place-items-center rounded-full text-xs font-bold ring-4 ring-white ${toneClasses[item.color]}`}>{i + 1}</span>{i < shownQueue.length - 1 && <span className="absolute left-[13px] top-7 h-[calc(100%+10px)] w-px bg-brand-border"/>}</div><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><span className="text-[10px] font-bold uppercase tracking-wider text-brand-muted">{item.type}</span><span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ring-1 ring-inset ${toneClasses[item.color]}`}>{item.level}</span></div><h3 className="mb-1 mt-1 text-sm font-bold text-brand-text">{item.title}</h3><p className="m-0 text-xs leading-5 text-brand-muted">{item.detail}</p></div><div className="flex items-center gap-2 sm:flex-col sm:items-end"><span className="mr-auto flex items-center gap-1 text-xs font-medium text-brand-muted sm:mr-0"><Clock3 size={13}/>{item.due}</span><span className="grid h-7 w-7 place-items-center rounded-full bg-brand-forest text-[10px] font-bold text-white">{item.owner}</span><button onClick={() => announce(`${item.action}: ${item.title}`)} className="inline-flex items-center gap-1 text-xs font-bold text-brand-gold-dark hover:text-brand-forest focus:outline-none focus:underline">{item.action}<ChevronRight size={14}/></button></div></li>)}</ol></article>
+      <div className="space-y-5"><article className="rounded-xl border border-brand-border bg-white p-5 shadow-sm"><div className="flex items-start justify-between"><div><h2 className="m-0 text-base font-semibold text-brand-forest">Document expiry watch</h2><p className="mb-0 mt-1 text-xs text-brand-muted">RC, insurance and vendor KYC</p></div><CircleAlert className="text-brand-gold-dark" size={19}/></div><div className="mt-4 divide-y divide-brand-border">{expiries.map(([name, vendor, date, urgent]) => <button key={String(name)} onClick={() => announce(`Opening ${name}`)} className="flex w-full items-center gap-3 py-3 text-left"><span className={`h-2 w-2 shrink-0 rounded-full ${urgent ? "bg-rose-500" : "bg-brand-gold"}`}/><span className="min-w-0 flex-1"><span className="block truncate text-xs font-bold text-brand-text">{name}</span><span className="block truncate text-[11px] text-brand-muted">{vendor}</span></span><span className={`text-[11px] font-bold ${urgent ? "text-rose-700" : "text-brand-gold-dark"}`}>{date}</span></button>)}</div><button className="mt-2 text-xs font-bold text-brand-forest hover:underline">View compliance register <ArrowRight className="inline" size={13}/></button></article>
+      <article className="rounded-xl border border-brand-border bg-[#fbfaf6] p-5 shadow-sm"><div className="flex items-center gap-2"><ScanLine className="text-brand-forest" size={19}/><h2 className="m-0 text-base font-semibold text-brand-forest">Vehicle verification</h2></div><p className="mb-3 mt-1 text-xs leading-5 text-brand-muted">Check a number plate against your internal vehicle records.</p><div className="flex gap-2"><input value={plate} onChange={(e) => setPlate(e.target.value.toUpperCase())} aria-label="Vehicle plate" className="min-w-0 flex-1 rounded-md border border-brand-border bg-white px-3 py-2 text-sm font-bold uppercase tracking-wide text-brand-text outline-none focus:border-brand-forest"/><button onClick={() => setMatched(plate.replaceAll(" ", "") === "MH12QP7842")} aria-label="Check plate" className="rounded-md bg-brand-forest px-3 text-white hover:bg-brand-forest-light"><ScanLine size={17}/></button></div>{matched ? <div className="mt-3 border-l-2 border-emerald-600 bg-white p-3"><div className="flex items-center gap-1 text-xs font-bold text-emerald-800"><CheckCircle2 size={14}/> Internal record match</div><p className="mb-0 mt-1 text-xs text-brand-muted"><b className="text-brand-text">Tata Prima 5530</b> · Northstar Logistics<br/>Insurance expires 04 Aug 2026</p></div> : <div className="mt-3 border-l-2 border-amber-500 bg-white p-3 text-xs text-brand-muted">No internal vehicle record matches this plate.</div>}</article></div></section>
+    <section className="grid gap-5 lg:grid-cols-2"><article className="rounded-xl border border-brand-border bg-white p-5 shadow-sm"><div className="flex justify-between"><div><h2 className="m-0 text-base font-semibold text-brand-forest">Financial snapshot</h2><p className="mb-0 mt-1 text-xs text-brand-muted">July collections · invoice payment tracking</p></div><IndianRupee className="text-brand-gold-dark" size={19}/></div><p className="mb-4 mt-5 text-2xl font-semibold text-brand-forest">₹12.48L <span className="text-xs font-medium text-emerald-700">+8.4% collected</span></p><div className="space-y-3">{[["Paid", "₹9.12L", "73", "bg-emerald-600"], ["Processing", "₹2.14L", "17", "bg-brand-gold"], ["Overdue", "₹1.22L", "10", "bg-rose-500"]].map(([label, value, width, color]) => <div key={label}><div className="flex justify-between text-xs"><span className="font-bold text-brand-text">{label}</span><span className="text-brand-muted">{value}</span></div><div className="mt-1.5 h-1.5 overflow-hidden rounded bg-brand-background"><div className={`h-full ${color}`} style={{width: `${width}%`}}/></div></div>)}</div><button onClick={() => announce("Opening invoices and billing")} className="mt-5 text-xs font-bold text-brand-forest hover:underline">Open invoices & billing <ArrowRight className="inline" size={13}/></button></article><article className="rounded-xl border border-brand-border bg-white p-5 shadow-sm"><div className="flex items-center justify-between"><div><h2 className="m-0 text-base font-semibold text-brand-forest">Recent audit activity</h2><p className="mb-0 mt-1 text-xs text-brand-muted">A traceable record of operational change</p></div><FileSearch className="text-brand-gold-dark" size={19}/></div><div className="mt-3 divide-y divide-brand-border">{audits.map(([initials, action, subject, when]) => <div key={subject} className="flex gap-3 py-3"><span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-brand-background text-[10px] font-bold text-brand-forest">{initials}</span><p className="m-0 min-w-0 flex-1 text-xs leading-5 text-brand-muted"><span className="font-bold text-brand-text">{action}</span><br/><span className="font-medium text-brand-forest">{subject}</span></p><span className="whitespace-nowrap text-[11px] text-brand-muted">{when}</span></div>)}</div><button className="mt-2 text-xs font-bold text-brand-forest hover:underline">View audit history <ArrowRight className="inline" size={13}/></button></article></section>
+  </div>;
 }

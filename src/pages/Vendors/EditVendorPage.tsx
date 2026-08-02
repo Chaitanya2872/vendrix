@@ -1,7 +1,7 @@
 import { ArrowLeft } from "lucide-react";
 import { Link, Navigate, useNavigate, useParams } from "react-router-dom";
 import { VendorForm } from "@/components/vendors/VendorForm";
-import { useVendors } from "@/context/VendorContext";
+import { useVendors } from "@/contexts/VendorContext";
 
 export function EditVendorPage() {
   const { id="" } = useParams(); const navigate=useNavigate(); const { getVendor, updateVendor }=useVendors(); const vendor=getVendor(id);

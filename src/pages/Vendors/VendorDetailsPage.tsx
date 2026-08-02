@@ -1,6 +1,6 @@
 import { ArrowLeft, Building2, Mail, MapPin, Pencil, Phone, Star, Trash2 } from "lucide-react";
 import { Link, Navigate, useNavigate, useParams } from "react-router-dom";
-import { useVendors } from "@/context/VendorContext";
+import { useVendors } from "@/contexts/VendorContext";
 
 export function VendorDetailsPage() {
   const { id="" }=useParams(); const navigate=useNavigate(); const { getVendor,deleteVendor }=useVendors(); const vendor=getVendor(id);
