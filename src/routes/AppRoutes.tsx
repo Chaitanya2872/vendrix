@@ -4,6 +4,15 @@ import { DashboardPage } from "@/pages/Dashboard/DashboardPage.tsx";
 import React from "react";
 import { VendorsPage } from "@/pages/Vendors/VendorsPage.tsx";
 import { DocumentsPage } from "@/pages/Documents/DocumentsPage.tsx";
+import { LoginPage } from "@/pages/Auth/LoginPage.tsx";
+import { ProtectedRoute } from "@/routes/ProtectedRoute.tsx";
+import { VendorProvider } from "@/contexts/VendorContext";
+import { VehiclesPage } from "@/pages/Vehicles/VehiclesPage.tsx";
+import { InvoicesPage } from "@/pages/Invoices/InvoicesPage.tsx";
+import { UsersPage } from "@/pages/Users/UsersPage.tsx";
+import { ReportsPage } from "@/pages/Reports/ReportsPage.tsx";
+import { AddVehiclePage } from "@/pages/Vehicles/AddVehiclePage.tsx";
+import { AddInvoicePage } from "@/pages/Invoices/AddInvoicePage.tsx";
 
 function PlaceholderPage({ title }: { title: string }) {
   return (
@@ -22,20 +31,25 @@ function PlaceholderPage({ title }: { title: string }) {
 export function AppRoutes() {
   return (
     <Routes>
-      <Route element={<AppLayout />}>
-        <Route index element={<DashboardPage />} />
+      <Route path="/login" element={<LoginPage />} />
+      <Route path="/" element={<Navigate to="/login" replace />} />
+      <Route element={<ProtectedRoute />}>
+      <Route element={<VendorProvider><AppLayout /></VendorProvider>}>
+        <Route path="dashboard" element={<DashboardPage />} />
 
         <Route path="vendors" element={<VendorsPage />} />
 
-        <Route path="vehicles" element={<PlaceholderPage title="Vehicles" />} />
+        <Route path="vehicles" element={<VehiclesPage />} />
+        <Route path="vehicles/add" element={<AddVehiclePage />} />
 
         <Route path="documents" element={<DocumentsPage />} />
 
-        <Route path="invoices" element={<PlaceholderPage title="Invoices & Billing" />} />
+        <Route path="invoices" element={<InvoicesPage />} />
+        <Route path="invoices/add" element={<AddInvoicePage />} />
 
         <Route
           path="users"
-          element={<PlaceholderPage title="Users" />}
+          element={<UsersPage />}
         />
 
         <Route
@@ -43,10 +57,11 @@ export function AppRoutes() {
           element={<PlaceholderPage title="Settings" />}
         />
 
-        <Route path="reports" element={<PlaceholderPage title="Reports" />} />
+        <Route path="reports" element={<ReportsPage />} />
+      </Route>
       </Route>
 
-      <Route path="*" element={<Navigate to="/" replace />} />
+      <Route path="*" element={<Navigate to="/login" replace />} />
     </Routes>
   );
 }

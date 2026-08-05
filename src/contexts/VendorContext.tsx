@@ -1,49 +1,33 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
-import { mockVendors } from "@/data/mockVendors";
 import type { Vendor, VendorInput } from "@/types/vendor";
+import { vendorApi } from "@/api/vendors";
 
 interface VendorContextValue {
   vendors: Vendor[];
-  addVendor: (input: VendorInput) => Vendor;
-  updateVendor: (id: string, input: VendorInput) => void;
-  deleteVendor: (id: string) => void;
+  addVendor: (input: VendorInput) => Promise<Vendor>;
+  updateVendor: (id: string, input: VendorInput) => Promise<void>;
+  deleteVendor: (id: string) => Promise<void>;
   getVendor: (id: string) => Vendor | undefined;
 }
 
 const VendorContext = createContext<VendorContextValue | null>(null);
-const STORAGE_KEY = "venqor-vendors";
-
-function loadVendors() {
-  try {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    return saved ? (JSON.parse(saved) as Vendor[]) : mockVendors;
-  } catch {
-    return mockVendors;
-  }
-}
-
 export function VendorProvider({ children }: { children: ReactNode }) {
-  const [vendors, setVendors] = useState<Vendor[]>(loadVendors);
-
-  useEffect(() => localStorage.setItem(STORAGE_KEY, JSON.stringify(vendors)), [vendors]);
+  const [vendors, setVendors] = useState<Vendor[]>([]);
+  useEffect(() => { void vendorApi.list().then(setVendors).catch(console.error); }, []);
 
   const value = useMemo<VendorContextValue>(() => ({
     vendors,
-    addVendor(input) {
-      const vendor: Vendor = {
-        ...input,
-        id: crypto.randomUUID(),
-        code: `VEN-${String(vendors.length + 1).padStart(3, "0")}`,
-        registeredOn: new Date().toISOString().slice(0, 10),
-      };
-      setVendors(current => [vendor, ...current]);
-      return vendor;
+    async addVendor(input) {
+      const code = `VEN-${Date.now().toString().slice(-8)}`;
+      const vendor = await vendorApi.create(input, code);
+      setVendors(current => [vendor, ...current]); return vendor;
     },
-    updateVendor(id, input) {
-      setVendors(current => current.map(vendor => vendor.id === id ? { ...vendor, ...input } : vendor));
+    async updateVendor(id, input) {
+      const vendor = await vendorApi.update(id, input);
+      setVendors(current => current.map(item => item.id === id ? vendor : item));
     },
-    deleteVendor(id) {
-      setVendors(current => current.filter(vendor => vendor.id !== id));
+    async deleteVendor(id) {
+      await vendorApi.remove(id); setVendors(current => current.filter(vendor => vendor.id !== id));
     },
     getVendor(id) {
       return vendors.find(vendor => vendor.id === id);

@@ -7,6 +7,7 @@ import {
 import { useVendors } from "@/contexts/VendorContext";
 import { DocumentPreview } from "../../components/documents/document preview";
 import { UploadDocumentModal, type UploadPayload } from "../../components/documents/uploaddocument";
+import { deleteDocument, listDocuments, uploadDocument } from "@/api/documents";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 export type DocumentStatus = "Valid" | "Expiring soon" | "Expired" | "Under review" | "Draft";
@@ -17,7 +18,7 @@ export type VendorDocument = {
 };
 
 // ─── Data ──────────────────────────────────────────────────────────────────────
-const documents: VendorDocument[] = [
+const mockDocuments: VendorDocument[] = [
   { id:"doc-001", name:"ISO 27001 Certificate",  vendorId:"1", category:"Certification",  uploadedOn:"2026-07-21", expiresOn:"2027-07-20", status:"Valid",         size:"2.4 MB",  lastModified:"2026-07-21T14:30:00", starred:true, tags:["security","certification"],   uploadedBy:"Cameron Williamson" },
   { id:"doc-002", name:"GST Registration",        vendorId:"1", category:"Tax document",   uploadedOn:"2026-06-15", expiresOn:null,          status:"Valid",         size:"856 KB",  lastModified:"2026-06-15T09:15:00",              tags:["tax","registration"],           uploadedBy:"Jenny Wilson"        },
   { id:"doc-003", name:"Analysis Data July",      vendorId:"1", category:"Policy",         uploadedOn:"2023-08-05", expiresOn:null,          status:"Under review",  size:"1.0 MB",  lastModified:"2023-08-05T10:00:00",              tags:["policy","data"],                uploadedBy:"Floyd Miles"         },
@@ -134,6 +135,9 @@ const initialsOf = (name: string) => name.split(" ").map(word => word[0]).slice(
 // ─── Page ──────────────────────────────────────────────────────────────────────
 export function DocumentsPage() {
   const { vendors } = useVendors();
+  const [documents, setDocuments] = useState<VendorDocument[]>([]);
+
+  useEffect(() => { void listDocuments().then(items => setDocuments(items.map(item => ({ id:item.id, name:item.filename, vendorId:"", category:item.document_type, uploadedOn:item.created_at.slice(0,10), expiresOn:null, status:item.status === "REVIEW_REQUIRED" ? "Under review" : item.status === "CONFIRMED" ? "Valid" : "Draft", size:"—", lastModified:item.created_at, uploadedBy:"You" })))).catch(console.error); }, []);
 
   const [query,           setQuery]           = useState("");
   const [sortBy,          setSortBy]          = useState<"latest"|"oldest"|"name">("latest");
@@ -560,7 +564,7 @@ export function DocumentsPage() {
           vendor={vendorById.get(previewDoc.vendorId)}
           onClose={() => setPreviewDoc(null)}
           onDownload={id => console.log("download", id)}
-          onDelete={id => { console.log("delete", id); setPreviewDoc(null); }}
+          onDelete={async id => { await deleteDocument(id); setDocuments(current => current.filter(document => document.id !== id)); setPreviewDoc(null); }}
           onToggleStar={id => console.log("star", id)}
         />
       )}
@@ -568,7 +572,7 @@ export function DocumentsPage() {
         <UploadDocumentModal
           vendors={vendors}
           onClose={() => setShowUpload(false)}
-          onUpload={(payload: UploadPayload) => { console.log("upload", payload); setShowUpload(false); }}
+          onUpload={async (payload: UploadPayload) => { const created = await Promise.all(payload.files.map(file => uploadDocument(file, payload.category))); setDocuments(current => [...created.map(item => ({ id:item.id, name:item.filename, vendorId:payload.vendorId, category:item.document_type, uploadedOn:item.created_at.slice(0,10), expiresOn:payload.expiresOn || null, status:"Under review" as const, size:"—", lastModified:item.created_at, uploadedBy:"You" })), ...current]); setShowUpload(false); }}
         />
       )}
     </div>

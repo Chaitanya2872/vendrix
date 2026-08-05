@@ -10,7 +10,7 @@ type Props = {
   vendors: VendorOption[];
   categories?: string[];
   onClose: () => void;
-  onUpload: (payload: UploadPayload) => void;
+  onUpload: (payload: UploadPayload) => Promise<void>;
 };
 
 const DEFAULT_CATEGORIES = ["Certification","Legal document","Tax document","Insurance","Agreement","Policy"];
@@ -48,7 +48,7 @@ export function UploadDocumentModal({ vendors, categories = DEFAULT_CATEGORIES, 
       onClick={onClose}
     >
       <div
-        className="flex w-full max-w-md flex-col overflow-hidden rounded-3xl bg-white shadow-2xl ring-1 ring-black/[0.07]"
+        className="flex w-full max-w-2xl flex-col overflow-hidden rounded-3xl bg-white shadow-2xl ring-1 ring-black/[0.07]"
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}
@@ -82,7 +82,7 @@ export function UploadDocumentModal({ vendors, categories = DEFAULT_CATEGORIES, 
               <p className="m-0 text-sm font-medium text-brand-text">Drag and drop files here, or click to browse</p>
               <p className="mb-0 mt-1 text-xs text-brand-muted">PDF, DOCX, XLSX, PNG — up to 25 MB per file</p>
             </div>
-            <input ref={inputRef} type="file" multiple className="hidden" onChange={e => addFiles(e.target.files)} />
+            <input ref={inputRef} type="file" accept=".pdf,.jpg,.jpeg,.png,.webp,.docx,.xlsx" multiple className="hidden" onChange={e => addFiles(e.target.files)} />
           </div>
 
           {/* File list */}
@@ -157,7 +157,7 @@ export function UploadDocumentModal({ vendors, categories = DEFAULT_CATEGORIES, 
             Cancel
           </button>
           <button
-            onClick={() => { if (!canSubmit) return; setIsSubmitting(true); onUpload({ files: pending.map(e => e.file), vendorId, category, expiresOn }); }}
+            onClick={async () => { if (!canSubmit) return; setIsSubmitting(true); try { await onUpload({ files: pending.map(e => e.file), vendorId, category, expiresOn }); } finally { setIsSubmitting(false); } }}
             disabled={!canSubmit}
             className="inline-flex h-9 items-center justify-center gap-2 rounded-xl bg-brand-forest px-5 text-sm font-semibold text-white shadow-sm transition-all hover:bg-brand-forest-light hover:shadow-md disabled:cursor-not-allowed disabled:opacity-50"
           >

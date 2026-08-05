@@ -16,6 +16,13 @@ export interface Vendor {
   rating: number;
   registeredOn: string;
   notes: string;
+  paymentTerms: string;
+  creditLimit: string;
+  billingDetails: string;
+  serviceDescription: string;
+  deliveryTimeline: string;
+  taxDocuments: string;
+  certificationStatus: string;
 }
 
 export type VendorInput = Omit<Vendor, "id" | "code" | "registeredOn">;

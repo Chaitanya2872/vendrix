@@ -1,7 +1,8 @@
 import React from "react";
-import { Bell, ChevronDown, Menu, Search } from "lucide-react";
-import { useLocation } from "react-router-dom";
+import { Bell, ChevronDown, LogOut, Menu, Search } from "lucide-react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { navigationItems } from "@/constants/navigation.ts";
+import { clearAccessToken } from "@/api/axios";
 
 interface TopbarProps {
   onMenuClick: () => void;
@@ -9,6 +10,7 @@ interface TopbarProps {
 
 export function Topbar({ onMenuClick }: TopbarProps) {
   const location = useLocation();
+  const navigate = useNavigate();
 
   const currentItem = [...navigationItems]
     .sort((a, b) => b.path.length - a.path.length)
@@ -58,6 +60,16 @@ export function Topbar({ onMenuClick }: TopbarProps) {
         <Bell className="h-5 w-5" />
 
         <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-brand-gold-dark" />
+      </button>
+
+      <button
+        type="button"
+        onClick={() => { clearAccessToken(); navigate("/login", { replace: true }); }}
+        className="inline-flex items-center gap-2 rounded-xl border border-brand-border px-3 py-2 text-sm font-medium text-brand-forest hover:bg-brand-background"
+        aria-label="Log out"
+      >
+        <LogOut className="h-4 w-4" />
+        <span className="hidden sm:inline">Logout</span>
       </button>
 
       <button

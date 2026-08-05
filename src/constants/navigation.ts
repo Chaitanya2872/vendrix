@@ -33,7 +33,7 @@ export const navigationGroups: NavigationGroup[] = [
       {
         id: "dashboard",
         label: "Dashboard",
-        path: "/",
+        path: "/dashboard",
         icon: LayoutDashboard,
         end: true,
       },
