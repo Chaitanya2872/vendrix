@@ -1,13 +1,66 @@
 import { useEffect, useRef, useState } from "react";
-import { AlertTriangle, Copy, Eye, EyeOff, HelpCircle, Loader2, LockKeyhole, Mail, ShieldCheck } from "lucide-react";
+import {
+  Activity,
+  AlertTriangle,
+  Building2,
+  Eye,
+  EyeOff,
+  FileCheck,
+  HelpCircle,
+  Loader2,
+  LockKeyhole,
+  Mail,
+  ShieldCheck,
+} from "lucide-react";
 import { Navigate, useLocation, useNavigate } from "react-router-dom";
 import axios from "axios";
 import { login } from "@/api/auth";
 import { getAccessToken } from "@/api/axios";
 
+/**
+ * Palette (inline literals so this file stays drop-in; promote to brand tokens when convenient):
+ *   forest  #0A1813 → #1C4030   brand side, lit from the top-left
+ *   paper   #FFFFFF             form side
+ *   ink     #16231D             headings, primary action
+ *   muted   #6E7A74             secondary text
+ *   line    #E4E4E0             field borders
+ *   brass   #C8A249             brand accent
+ */
+
 type LocationState = { from?: { pathname?: string } };
 
 const SUPPORT_EMAIL = import.meta.env.VITE_SUPPORT_EMAIL ?? "support@iotiq.example.com";
+
+const CAPABILITIES = [
+  {
+    icon: Building2,
+    title: "Vendor records, unified",
+    copy: "Profiles, contacts, and contracts held in one place instead of five inboxes.",
+  },
+  {
+    icon: FileCheck,
+    title: "Compliance you can see",
+    copy: "Track documents and renewal dates before anything lapses.",
+  },
+  {
+    icon: Activity,
+    title: "Fleet intelligence in context",
+    copy: "Device health sits next to the vendor accountable for it.",
+  },
+];
+
+const labelClass = "mb-2 block text-[13px] font-medium text-[#16231D]";
+const fieldShell =
+  "flex items-center rounded-[8px] border bg-white transition duration-200 hover:border-[#D3D3CE] focus-within:border-[#16231D] focus-within:ring-4 focus-within:ring-[#16231D]/10";
+const fieldInput =
+  "w-full bg-transparent px-3 py-2.5 text-sm text-[#16231D] caret-[#16231D] outline-none placeholder:text-[#A6A6A2] disabled:cursor-not-allowed " +
+  // Chrome/Safari paint a blue block over autofilled inputs; the inset shadow covers it
+  // in the field's own white, and the 9999s transition stops it flashing back on focus.
+  "autofill:[-webkit-box-shadow:inset_0_0_0_1000px_#ffffff] autofill:[-webkit-text-fill-color:#16231D] " +
+  "autofill:[transition:background-color_9999s_ease-in-out_0s] " +
+  "hover:autofill:[-webkit-box-shadow:inset_0_0_0_1000px_#ffffff] " +
+  "focus:autofill:[-webkit-box-shadow:inset_0_0_0_1000px_#ffffff] " +
+  "active:autofill:[-webkit-box-shadow:inset_0_0_0_1000px_#ffffff]";
 
 export function LoginPage() {
   const navigate = useNavigate();
@@ -22,11 +75,10 @@ export function LoginPage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [fieldErrors, setFieldErrors] = useState<{ email?: string; password?: string }>({});
-  const [copied, setCopied] = useState(false);
-  const isDevelopment = import.meta.env.DEV;
-  const seededAdminEmail = import.meta.env.VITE_SEEDED_ADMIN_EMAIL ?? "admin@iotiq.example.com";
 
-  useEffect(() => emailRef.current?.focus(), []);
+  useEffect(() => {
+    emailRef.current?.focus();
+  }, []);
 
   if (getAccessToken()) return <Navigate to="/dashboard" replace />;
 
@@ -34,7 +86,7 @@ export function LoginPage() {
     event.preventDefault();
     const errors: { email?: string; password?: string } = {};
     if (!email.trim()) errors.email = "Enter your work email address.";
-    else if (!/^\S+@\S+\.\S+$/.test(email)) errors.email = "Enter a valid email address.";
+    else if (!/^\S+@\S+\.\S+$/.test(email)) errors.email = "Use the format name@company.com.";
     if (!password) errors.password = "Enter your password.";
     setFieldErrors(errors);
     setError("");
@@ -47,97 +99,178 @@ export function LoginPage() {
       navigate(state?.from?.pathname || "/dashboard", { replace: true });
     } catch (requestError) {
       const status = axios.isAxiosError(requestError) ? requestError.response?.status : undefined;
-      setError(status === 401 || status === 403
-        ? "We couldn't verify those credentials. Please try again."
-        : "Unable to reach the sign-in service. Please try again shortly.");
+      setError(
+        status === 401 || status === 403
+          ? "That email and password don't match an account. Check both and try again."
+          : "Can't reach the sign-in service. Check your connection, then try again."
+      );
     } finally {
       setSubmitting(false);
     }
   };
 
-  const useSeededEmail = async () => {
-    setEmail(seededAdminEmail);
-    setFieldErrors(current => ({ ...current, email: undefined }));
-    setCopied(true);
-    window.setTimeout(() => setCopied(false), 1800);
-    await navigator.clipboard?.writeText(seededAdminEmail).catch(() => undefined);
-  };
-
   return (
-    <main className="relative min-h-screen bg-[#f7f4ed] text-brand-text lg:grid lg:grid-cols-[minmax(420px,46%)_1fr]">
-      <div className="pointer-events-none absolute left-[27%] right-[17%] top-[calc(50%-295px)] z-10 hidden h-px bg-[#d1ad71] lg:block" aria-hidden="true">
-        <span className="absolute -left-1 -top-1.5 h-3 w-3 rounded-full border-2 border-[#d1ad71] bg-brand-forest" />
-        <span className="absolute left-[33%] -top-1 h-2 w-2 rounded-full bg-[#d1ad71] shadow-[0_0_0_6px_rgba(209,173,113,.12)]" />
-      </div>
-      <section className="relative hidden overflow-hidden bg-brand-forest px-10 py-12 text-[#f8f5ed] lg:flex lg:min-h-screen lg:flex-col xl:px-16">
-        <div className="pointer-events-none absolute inset-0 opacity-50" aria-hidden="true">
-          <div className="absolute -left-20 top-28 h-72 w-72 animate-float-slow rounded-full border border-[#d1ad71]/30" />
-          <div className="absolute left-28 top-36 h-3 w-3 animate-float-slow rounded-full bg-[#d1ad71] shadow-[0_0_0_9px_rgba(209,173,113,.10)]" style={{ animationDelay: "1.1s" }} />
-          <div className="absolute left-0 top-[47%] h-px w-[74%] bg-[#d1ad71]/50" />
-          <div className="absolute right-[21%] top-[38%] h-[22%] w-px bg-[#d1ad71]/35" />
-          <div className="absolute right-[19.7%] top-[60%] h-2.5 w-2.5 animate-float-slow rounded-full bg-[#d1ad71]" style={{ animationDelay: "2.3s" }} />
-          <div className="absolute -bottom-24 right-4 h-72 w-72 rounded-full border border-[#f8f5ed]/10" />
+    <main className="min-h-screen bg-white text-[#16231D] lg:grid lg:grid-cols-[1.05fr_1fr]">
+      {/* ─────────────  Brand side  ───────────── */}
+      <section className="relative hidden overflow-hidden bg-[#0A1813] text-[#EDF2EC] lg:flex lg:min-h-screen lg:flex-col lg:px-14 lg:py-12 xl:px-20">
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0"
+          style={{
+            background:
+              "radial-gradient(95% 75% at 10% 4%, #1C4030 0%, #12291F 46%, #0A1813 100%)",
+          }}
+        />
+
+        {/* Signal rings — an IoT node, broadcasting. The one flourish on the page. */}
+        <div aria-hidden="true" className="pointer-events-none absolute -right-24 bottom-[14%]">
+          <span className="absolute left-1/2 top-1/2 h-2 w-2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#C8A249]" />
+          {[0, 1, 2].map(ring => (
+            <span
+              key={ring}
+              className="absolute left-1/2 top-1/2 h-44 w-44 -translate-x-1/2 -translate-y-1/2 animate-ping rounded-full border border-[#C8A249]/25 motion-reduce:animate-none"
+              style={{ animationDuration: "6s", animationDelay: `${ring * 2}s` }}
+            />
+          ))}
+          <span className="absolute left-1/2 top-1/2 h-72 w-72 -translate-x-1/2 -translate-y-1/2 rounded-full border border-[#C8A249]/10" />
+          <span className="absolute left-1/2 top-1/2 h-[30rem] w-[30rem] -translate-x-1/2 -translate-y-1/2 rounded-full border border-[#C8A249]/[0.06]" />
         </div>
 
-        <div className="relative flex animate-fade-in-up items-center gap-3 text-sm font-bold tracking-[0.16em]">
-          <span className="grid h-9 w-9 place-items-center border border-[#d1ad71] text-[#d1ad71]">IQ</span>
-          IOTIQ
+        <div className="relative flex items-center gap-2.5">
+          <span className="grid h-9 w-9 place-items-center rounded-[8px] border border-[#C8A249]/60 text-[12px] font-semibold tracking-wide text-[#C8A249]">
+            IQ
+          </span>
+          <span className="text-sm font-semibold tracking-[0.16em]">IOTIQ</span>
         </div>
-        <div className="relative my-auto max-w-md pb-14 pt-24">
-          <p className="mb-5 animate-fade-in-up text-xs font-bold uppercase tracking-[0.2em] text-[#d1ad71]" style={{ animationDelay: "80ms" }}>Vendor operations, in control</p>
-          <h1 className="animate-fade-in-up font-[Geist_Variable] text-4xl font-medium leading-[1.08] tracking-[-0.045em] xl:text-5xl" style={{ animationDelay: "160ms" }}>
-            Know the signal.<br />Move with confidence.
+
+        <div className="relative my-auto max-w-xl pb-10 pt-20">
+          <span
+            className="inline-flex animate-fade-in-up items-center gap-2 rounded-full border border-white/15 bg-white/[0.06] px-3.5 py-1.5 text-[11px] font-medium uppercase tracking-[0.14em] text-[#D9BE7C] motion-reduce:animate-none"
+          >
+            <span className="h-1.5 w-1.5 rounded-full bg-[#C8A249]" />
+            Vendor operations platform
+          </span>
+
+          <h1
+            className="mt-7 animate-fade-in-up font-[Geist_Variable] text-[44px] font-medium leading-[1.04] tracking-[-0.035em] motion-reduce:animate-none xl:text-[54px]"
+            style={{ animationDelay: "80ms" }}
+          >
+            Every vendor,
+            <br />
+            every document,
+            <br />
+            <span className="text-[#C8A249]">every device.</span>
           </h1>
-          <p className="mt-6 max-w-sm animate-fade-in-up text-sm leading-7 text-[#dce4da]" style={{ animationDelay: "240ms" }}>
-            One secure workspace for your vendor records, compliance documents, and fleet intelligence.
+
+          <p
+            className="mt-6 max-w-md animate-fade-in-up text-[15px] leading-7 text-[#B9C9BE] motion-reduce:animate-none"
+            style={{ animationDelay: "150ms" }}
+          >
+            IOTIQ holds your records, compliance status, and fleet telemetry in one workspace, so
+            your team can see what needs attention and act on it the same day.
           </p>
-          <div className="mt-10 flex animate-fade-in-up items-center gap-3 text-sm text-[#dce4da]" style={{ animationDelay: "320ms" }}>
-            <span className="h-px w-10 bg-[#d1ad71]" />
-            <span>Built for accountable operations</span>
-          </div>
+
+          <ul className="mt-12 max-w-md space-y-6">
+            {CAPABILITIES.map(({ icon: Icon, title, copy }, index) => (
+              <li
+                key={title}
+                className="flex animate-fade-in-up gap-4 motion-reduce:animate-none"
+                style={{ animationDelay: `${220 + index * 70}ms` }}
+              >
+                <span className="mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-[8px] border border-white/12 bg-white/[0.05] text-[#C8A249]">
+                  <Icon size={16} aria-hidden="true" />
+                </span>
+                <span>
+                  <span className="block text-sm font-medium text-[#EDF2EC]">{title}</span>
+                  <span className="mt-1 block text-[13px] leading-6 text-[#93A79A]">{copy}</span>
+                </span>
+              </li>
+            ))}
+          </ul>
         </div>
-        <p className="relative text-xs text-[#bfcfc1]">Internal operations console · India</p>
+
+        <p className="relative text-xs text-[#7C9186]">Internal operations console · India</p>
       </section>
 
-      <section className="relative flex min-h-screen items-center justify-center px-5 py-10 sm:px-8 lg:px-12">
-        <div className="w-full max-w-md">
-          <div className="mb-12 flex items-center gap-3 lg:hidden">
-            <span className="grid h-9 w-9 place-items-center bg-brand-forest text-xs font-bold tracking-wide text-[#f8f5ed]">IQ</span>
-            <span className="text-sm font-extrabold tracking-[0.16em] text-brand-forest">IOTIQ</span>
+      {/* ─────────────  Sign-in side  ───────────── */}
+      <section className="flex min-h-screen items-center justify-center px-5 py-12 sm:px-10">
+        <div className="w-full max-w-[380px]">
+          <div className="mb-10 flex items-center justify-center gap-2.5 lg:hidden">
+            <span className="grid h-9 w-9 place-items-center rounded-[8px] bg-[#16231D] text-[12px] font-semibold tracking-wide text-[#C8A249]">
+              IQ
+            </span>
+            <span className="text-sm font-semibold tracking-[0.16em] text-[#16231D]">IOTIQ</span>
           </div>
-          <div className="mb-8 flex items-center gap-4 lg:pl-20">
-            <span className="relative h-px w-12 bg-brand-gold" aria-hidden="true"><span className="absolute -left-1 -top-1 h-2 w-2 rounded-full bg-brand-gold" /></span>
-            <p className="text-xs font-bold uppercase tracking-[0.2em] text-brand-gold-dark">Secure access</p>
-          </div>
-          <header className="animate-fade-in-up">
-            <h2 className="font-[Geist_Variable] text-4xl font-medium tracking-[-0.045em] text-brand-forest">Welcome back.</h2>
-            <p className="mt-3 text-sm leading-6 text-brand-muted">Sign in to continue to your operations workspace.</p>
+
+          <header className="animate-fade-in-up text-center motion-reduce:animate-none">
+            <span className="inline-flex items-center gap-2.5 text-[11px] font-medium uppercase tracking-[0.18em] text-[#8A6D22]">
+              <span className="h-px w-5 bg-[#C8A249]/70" aria-hidden="true" />
+              Secure access
+              <span className="h-px w-5 bg-[#C8A249]/70" aria-hidden="true" />
+            </span>
+            <h2 className="mt-3.5 font-[Geist_Variable] text-[22px] font-semibold leading-tight tracking-[-0.01em]">
+              Sign in
+            </h2>
+            <p className="mx-auto mt-2 max-w-[290px] text-sm leading-6 text-[#6E7A74]">
+              Use your IOTIQ work account to continue.
+            </p>
           </header>
 
-          <form className="mt-9 space-y-5" noValidate onSubmit={submit}>
+          <form className="mt-8 space-y-5" noValidate aria-busy={submitting} onSubmit={submit}>
             {error && (
-              <div role="alert" className="flex animate-fade-in-up items-start gap-2.5 border-l-2 border-red-700 bg-red-50 px-4 py-3 text-sm leading-5 text-red-800">
+              <div
+                role="alert"
+                className="flex items-start gap-2.5 rounded-[8px] border border-[#E7C9C5] bg-[#FBF0EE] px-4 py-3 text-[13px] leading-5 text-[#8A2822]"
+              >
                 <AlertTriangle size={16} className="mt-0.5 shrink-0" aria-hidden="true" />
                 <span>{error}</span>
               </div>
             )}
-            <div className="animate-fade-in-up" style={{ animationDelay: "80ms" }}>
-              <label htmlFor="email" className="mb-2 block text-sm font-bold text-brand-forest">Work email</label>
-              <div className={`flex items-center border bg-white transition focus-within:border-brand-forest focus-within:ring-2 focus-within:ring-brand-forest/15 ${fieldErrors.email ? "border-red-600" : "border-brand-border"}`}>
-                <Mail size={18} className="ml-4 shrink-0 text-brand-muted" aria-hidden="true" />
-                <input ref={emailRef} id="email" name="email" type="email" autoComplete="email" value={email} onChange={e => setEmail(e.target.value)} aria-invalid={Boolean(fieldErrors.email)} aria-describedby={fieldErrors.email ? "email-error" : undefined} className="w-full bg-transparent px-3 py-3.5 text-sm outline-none" placeholder="name@company.com" disabled={submitting} />
+
+            <div>
+              <label htmlFor="email" className={labelClass}>
+                Work email
+              </label>
+              <div className={`${fieldShell} ${fieldErrors.email ? "border-[#C0524B]" : "border-[#E4E4E0]"}`}>
+                <Mail size={16} className="ml-3.5 shrink-0 text-[#9A978B]" aria-hidden="true" />
+                <input
+                  ref={emailRef}
+                  id="email"
+                  name="email"
+                  type="email"
+                  autoComplete="email"
+                  value={email}
+                  onChange={e => setEmail(e.target.value)}
+                  aria-invalid={Boolean(fieldErrors.email)}
+                  aria-describedby={fieldErrors.email ? "email-error" : undefined}
+                  className={fieldInput}
+                  placeholder="name@company.com"
+                  disabled={submitting}
+                />
               </div>
-              {fieldErrors.email && <p id="email-error" className="mt-1.5 text-xs font-semibold text-red-700">{fieldErrors.email}</p>}
+              {fieldErrors.email && (
+                <p id="email-error" className="mt-2 text-xs text-[#B0463F]">
+                  {fieldErrors.email}
+                </p>
+              )}
             </div>
-            <div className="animate-fade-in-up" style={{ animationDelay: "140ms" }}>
-              <div className="mb-2 flex items-center justify-between">
-                <label htmlFor="password" className="block text-sm font-bold text-brand-forest">Password</label>
-                <button type="button" onClick={() => setShowForgotHelp(value => !value)} className="text-xs font-bold text-brand-gold-dark underline decoration-brand-gold underline-offset-4 hover:text-brand-forest focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-forest">
+
+            <div>
+              <div className="mb-2 flex items-baseline justify-between gap-3">
+                <label htmlFor="password" className="text-[13px] font-medium text-[#16231D]">
+                  Password
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setShowForgotHelp(value => !value)}
+                  aria-expanded={showForgotHelp}
+                  className="rounded text-[13px] text-[#6E7A74] transition duration-200 hover:text-[#16231D] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#C8A249]"
+                >
                   Forgot password?
                 </button>
               </div>
-              <div className={`flex items-center border bg-white transition focus-within:border-brand-forest focus-within:ring-2 focus-within:ring-brand-forest/15 ${fieldErrors.password ? "border-red-600" : "border-brand-border"}`}>
-                <LockKeyhole size={18} className="ml-4 shrink-0 text-brand-muted" aria-hidden="true" />
+              <div className={`${fieldShell} ${fieldErrors.password ? "border-[#C0524B]" : "border-[#E4E4E0]"}`}>
+                <LockKeyhole size={16} className="ml-3.5 shrink-0 text-[#9A978B]" aria-hidden="true" />
                 <input
                   id="password"
                   name="password"
@@ -145,47 +278,80 @@ export function LoginPage() {
                   autoComplete="current-password"
                   value={password}
                   onChange={e => setPassword(e.target.value)}
+                  onKeyDown={e => setCapsLockOn(e.getModifierState("CapsLock"))}
                   onKeyUp={e => setCapsLockOn(e.getModifierState("CapsLock"))}
                   onBlur={() => setCapsLockOn(false)}
                   aria-invalid={Boolean(fieldErrors.password)}
-                  aria-describedby={fieldErrors.password ? "password-error" : capsLockOn ? "password-capslock" : undefined}
-                  className="w-full bg-transparent px-3 py-3.5 text-sm outline-none"
+                  aria-describedby={
+                    fieldErrors.password ? "password-error" : capsLockOn ? "password-capslock" : undefined
+                  }
+                  className={fieldInput}
                   placeholder="Enter your password"
                   disabled={submitting}
                 />
-                <button type="button" onClick={() => setShowPassword(value => !value)} className="mr-3 grid h-9 w-9 shrink-0 place-items-center text-brand-muted transition hover:text-brand-forest focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-forest" aria-label={showPassword ? "Hide password" : "Show password"}>
-                  {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(value => !value)}
+                  className="mr-1.5 grid h-8 w-8 shrink-0 place-items-center rounded-[6px] text-[#8E8B80] transition duration-200 hover:bg-[#F4F4F2] hover:text-[#16231D] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#C8A249]"
+                  aria-label={showPassword ? "Hide password" : "Show password"}
+                >
+                  {showPassword ? <EyeOff size={17} /> : <Eye size={17} />}
                 </button>
               </div>
-              {fieldErrors.password
-                ? <p id="password-error" className="mt-1.5 text-xs font-semibold text-red-700">{fieldErrors.password}</p>
-                : capsLockOn && <p id="password-capslock" className="mt-1.5 flex items-center gap-1.5 text-xs font-semibold text-brand-gold-dark"><AlertTriangle size={13} aria-hidden="true" />Caps Lock is on.</p>}
+              {fieldErrors.password ? (
+                <p id="password-error" className="mt-2 text-xs text-[#B0463F]">
+                  {fieldErrors.password}
+                </p>
+              ) : (
+                capsLockOn && (
+                  <p id="password-capslock" className="mt-2 flex items-center gap-1.5 text-xs text-[#8A6D22]">
+                    <AlertTriangle size={13} aria-hidden="true" />
+                    Caps Lock is on.
+                  </p>
+                )
+              )}
 
               {showForgotHelp && (
-                <div className="mt-3 flex animate-fade-in-up items-start gap-2.5 border-l-2 border-brand-gold bg-[#f3ede1] px-4 py-3 text-xs leading-5 text-brand-text">
-                  <HelpCircle size={15} className="mt-0.5 shrink-0 text-brand-gold-dark" aria-hidden="true" />
-                  <span>Password resets are handled by your workspace administrator. Reach out at <a href={`mailto:${SUPPORT_EMAIL}`} className="font-semibold underline decoration-brand-gold underline-offset-2">{SUPPORT_EMAIL}</a> for help regaining access.</span>
+                <div className="mt-3 flex items-start gap-2.5 rounded-[8px] bg-[#F6F6F4] px-4 py-3 text-xs leading-5 text-[#55605A]">
+                  <HelpCircle size={15} className="mt-0.5 shrink-0 text-[#8A9490]" aria-hidden="true" />
+                  <span>
+                    Your workspace administrator resets passwords. Email{" "}
+                    <a
+                      href={`mailto:${SUPPORT_EMAIL}`}
+                      className="font-medium text-[#16231D] underline decoration-[#C8A249] underline-offset-2"
+                    >
+                      {SUPPORT_EMAIL}
+                    </a>{" "}
+                    to get back in.
+                  </span>
                 </div>
               )}
             </div>
-            <label className="flex animate-fade-in-up items-center gap-2.5 text-sm text-brand-text" style={{ animationDelay: "180ms" }}>
-              <input type="checkbox" checked={rememberMe} onChange={e => setRememberMe(e.target.checked)} className="h-4 w-4 shrink-0 rounded-none border-brand-border text-brand-forest accent-brand-forest focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-forest" />
+
+            <label className="flex cursor-pointer items-center gap-2.5 text-[13px] text-[#55605A]">
+              <input
+                type="checkbox"
+                checked={rememberMe}
+                onChange={e => setRememberMe(e.target.checked)}
+                className="h-4 w-4 shrink-0 rounded-[3px] border-[#D9D9D5] accent-[#16231D] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#C8A249]"
+              />
               Keep me signed in on this device
             </label>
-            <button type="submit" disabled={submitting} className="mt-2 flex w-full animate-fade-in-up items-center justify-center gap-2 bg-brand-forest px-5 py-3.5 text-sm font-bold text-white transition hover:bg-brand-forest-light focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-forest disabled:cursor-not-allowed disabled:opacity-65" style={{ animationDelay: "220ms" }}>
+
+            <button
+              type="submit"
+              disabled={submitting}
+              className="flex w-full items-center justify-center gap-2 rounded-[8px] bg-[#16231D] px-5 py-3 text-sm font-medium text-white transition duration-200 hover:bg-[#22362D] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#C8A249] disabled:cursor-not-allowed disabled:opacity-60"
+            >
               {submitting && <Loader2 size={16} className="animate-spin" aria-hidden="true" />}
-              {submitting ? "Signing in…" : "Sign in securely"}
+              {submitting ? "Signing in…" : "Sign in"}
             </button>
           </form>
 
-          {isDevelopment && <aside className="mt-7 animate-fade-in-up border-l-2 border-brand-gold bg-[#f3ede1] px-4 py-3 text-sm leading-6 text-brand-text">
-            <strong className="font-bold text-brand-forest">Local development access</strong>
-            <p className="mt-1">Seeded administrator: <span className="font-semibold">{seededAdminEmail}</span>. The local backend seed password is <span className="font-semibold">Admin@123</span>.</p>
-            <button type="button" onClick={() => void useSeededEmail()} className="mt-2 inline-flex items-center gap-1.5 text-xs font-bold text-brand-forest underline decoration-brand-gold underline-offset-4 hover:text-brand-forest-light focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-forest">
-              <Copy size={14} aria-hidden="true" />{copied ? "Email copied and added to form" : "Use seeded email"}
-            </button>
-          </aside>}
-          <p className="mt-7 flex animate-fade-in-up gap-2 text-xs leading-5 text-brand-muted"><ShieldCheck size={16} className="mt-0.5 shrink-0 text-brand-forest" aria-hidden="true" />Your session is protected and access is logged for operational security.</p>
+          <p className="mt-8 flex items-center justify-center gap-2 border-t border-[#ECECE9] pt-6 text-xs text-[#8A9490]">
+            <ShieldCheck size={14} className="shrink-0" aria-hidden="true" />
+            Sessions are protected and access is logged.
+          </p>
         </div>
       </section>
     </main>
