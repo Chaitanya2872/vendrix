@@ -5,6 +5,8 @@ import {
   FileCheck2,
   LayoutDashboard,
   ReceiptText,
+  ShoppingCart,
+  Truck,
   Users,
   type LucideIcon,
 } from "lucide-react";
@@ -54,6 +56,18 @@ export const navigationGroups: NavigationGroup[] = [
         label: "Documents & OCR",
         path: "/documents",
         icon: FileCheck2,
+      },
+      {
+        id: "purchases",
+        label: "Purchases",
+        path: "/purchases",
+        icon: ShoppingCart,
+      },
+      {
+        id: "deliveries",
+        label: "Deliveries",
+        path: "/deliveries",
+        icon: Truck,
       },
     ],
   },

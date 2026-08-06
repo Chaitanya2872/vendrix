@@ -8,10 +8,18 @@ export type Approval = { id:string; resource_type:string; resource_id:string; st
 export type AuditLog = { id:string; action:string; resource_type:string; resource_id:string; actor_id?:string; created_at:string };
 export type Summary = { vendors:number; active_vehicles:number; pending_approvals:number; invoice_total:number; paid_total:number };
 
+const PAGE_SIZE = 200;
 const list = async <T>(path:string) => {
-  const { data } = await api.get<T[] | { items?: T[] }>(path);
-  const records = Array.isArray(data) ? data : data.items;
-  if (!Array.isArray(records)) throw new Error(`Unexpected list response from ${path}`);
+  const { data } = await api.get<T[] | { items?: T[]; total?: number }>(path, { params: { limit: PAGE_SIZE } });
+  if (Array.isArray(data)) return data;
+  if (!Array.isArray(data.items)) throw new Error(`Unexpected list response from ${path}`);
+  const records = [...data.items];
+  const total = data.total ?? records.length;
+  while (records.length < total) {
+    const { data: page } = await api.get<{ items: T[] }>(path, { params: { limit: PAGE_SIZE, offset: records.length } });
+    if (!page.items?.length) break;
+    records.push(...page.items);
+  }
   return records;
 };
 export const operationsApi = {
@@ -25,5 +33,5 @@ export const operationsApi = {
   users: () => api.get<UserProfile[]>("/users").then(r => r.data),
   summary: () => api.get<Summary>("/reports/summary").then(r => r.data),
   approvals: () => api.get<Approval[]>("/approvals").then(r => r.data),
-  auditLogs: () => api.get<AuditLog[]>("/audit-logs").then(r => r.data),
+  auditLogs: () => api.get<AuditLog[]>("/audit-logs", { params: { limit: 500 } }).then(r => r.data),
 };

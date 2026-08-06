@@ -13,6 +13,12 @@ import { UsersPage } from "@/pages/Users/UsersPage.tsx";
 import { ReportsPage } from "@/pages/Reports/ReportsPage.tsx";
 import { AddVehiclePage } from "@/pages/Vehicles/AddVehiclePage.tsx";
 import { AddInvoicePage } from "@/pages/Invoices/AddInvoicePage.tsx";
+import { PurchasesPage } from "@/pages/Procurement/PurchasesPage";
+import { PurchaseFormPage } from "@/pages/Procurement/PurchaseFormPage";
+import { PurchaseDetailsPage } from "@/pages/Procurement/PurchaseDetailsPage";
+import { DeliveriesPage } from "@/pages/Procurement/DeliveriesPage";
+import { DeliveryFormPage } from "@/pages/Procurement/DeliveryFormPage";
+import { DeliveryDetailsPage } from "@/pages/Procurement/DeliveryDetailsPage";
 
 function PlaceholderPage({ title }: { title: string }) {
   return (
@@ -46,6 +52,16 @@ export function AppRoutes() {
 
         <Route path="invoices" element={<InvoicesPage />} />
         <Route path="invoices/add" element={<AddInvoicePage />} />
+
+        <Route path="purchases" element={<PurchasesPage />} />
+        <Route path="purchases/new" element={<PurchaseFormPage />} />
+        <Route path="purchases/:id" element={<PurchaseDetailsPage />} />
+        <Route path="purchases/:id/edit" element={<PurchaseFormPage />} />
+
+        <Route path="deliveries" element={<DeliveriesPage />} />
+        <Route path="deliveries/new" element={<DeliveryFormPage />} />
+        <Route path="deliveries/:id" element={<DeliveryDetailsPage />} />
+        <Route path="deliveries/:id/edit" element={<DeliveryFormPage />} />
 
         <Route
           path="users"

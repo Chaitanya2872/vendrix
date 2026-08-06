@@ -112,7 +112,13 @@ export function LoginPage() {
   return (
     <main className="min-h-screen bg-white text-[#16231D] lg:grid lg:grid-cols-[1.05fr_1fr]">
       {/* ─────────────  Brand side  ───────────── */}
-      <section className="relative hidden overflow-hidden bg-[#0A1813] text-[#EDF2EC] lg:flex lg:min-h-screen lg:flex-col lg:px-14 lg:py-12 xl:px-20">
+      <section
+        className="relative z-10 hidden overflow-hidden bg-[#0A1813] text-[#EDF2EC] lg:flex lg:min-h-screen lg:flex-col lg:px-14 lg:py-12 xl:px-20"
+        style={{
+          clipPath: "polygon(0 0, 100% 0, calc(100% - 4.5rem) 100%, 0 100%)",
+          filter: "drop-shadow(18px 10px 34px rgba(10, 24, 19, 0.35))",
+        }}
+      >
         <div
           aria-hidden="true"
           className="pointer-events-none absolute inset-0"
@@ -120,6 +126,10 @@ export function LoginPage() {
             background:
               "radial-gradient(95% 75% at 10% 4%, #1C4030 0%, #12291F 46%, #0A1813 100%)",
           }}
+        />
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-y-0 -right-1 w-24 bg-gradient-to-l from-black/15 to-transparent"
         />
 
         {/* Signal rings — an IoT node, broadcasting. The one flourish on the page. */}
