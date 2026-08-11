@@ -1,11 +1,11 @@
 import { useEffect, useState, type FormEvent } from "react";
 import type { VendorInput, VendorStatus } from "@/types/vendor";
+import { useVendorCategories } from "@/contexts/VendorCategoryContext";
 
-const CATEGORIES = ["Transport & Logistics", "Construction", "Equipment Rental", "Materials Supplier", "Professional Services", "Maintenance", "Office Supplies", "Other"];
 type Place = { display_name: string; address: { city?: string; town?: string; village?: string; county?: string; state?: string } };
 
 const emptyVendor: VendorInput = {
-  name:"", category:"", contactPerson:"", email:"", phone:"", gstin:"", address:"", city:"", state:"", status:"Pending", rating:0, notes:"", paymentTerms:"", creditLimit:"", billingDetails:"", serviceDescription:"", deliveryTimeline:"", taxDocuments:"", certificationStatus:"Not submitted",
+  code:"", name:"", category:"", contactPerson:"", email:"", phone:"", gstin:"", address:"", city:"", state:"", status:"Pending", rating:0, notes:"", paymentTerms:"", creditLimit:"", billingDetails:"", serviceDescription:"", deliveryTimeline:"", taxDocuments:"", certificationStatus:"Not submitted",
 };
 
 export function VendorForm({ initialValue, submitLabel, onSubmit, onCancel }: {
@@ -14,6 +14,7 @@ export function VendorForm({ initialValue, submitLabel, onSubmit, onCancel }: {
   onSubmit: (value: VendorInput) => void;
   onCancel: () => void;
 }) {
+  const { categories } = useVendorCategories();
   const [form, setForm] = useState<VendorInput>(initialValue ?? emptyVendor);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [suggestions, setSuggestions] = useState<Place[]>([]);
@@ -62,7 +63,7 @@ export function VendorForm({ initialValue, submitLabel, onSubmit, onCancel }: {
     <form onSubmit={submit} className="space-y-6">
       <section className="rounded-xl border border-brand-border bg-white p-5 shadow-sm">
         <h2 className="m-0 text-base font-semibold text-brand-forest">Company information</h2>
-        <div className="mt-4 grid gap-4 md:grid-cols-2">{field("Vendor name", "name", "text", true)}<label className="space-y-1.5 text-sm font-medium text-brand-text"><span>Category <span className="text-red-500">*</span></span><select value={form.category} onChange={e => set("category", e.target.value)} className="h-10 w-full rounded-lg border border-brand-border bg-white px-3 text-sm outline-none focus:border-brand-forest focus:ring-2 focus:ring-brand-forest/10"><option value="" disabled>Select category</option>{CATEGORIES.map(category => <option key={category}>{category}</option>)}</select>{errors.category && <span className="text-xs font-normal text-red-600">{errors.category}</span>}</label>{field("GSTIN", "gstin")}{field("Rating", "rating", "number")}</div>
+        <div className="mt-4 grid gap-4 md:grid-cols-2">{field("Vendor name", "name", "text", true)}<label className="space-y-1.5 text-sm font-medium text-brand-text"><span>Vendor code</span><input type="text" value={form.code ?? ""} onChange={e => set("code", e.target.value)} placeholder="Leave blank to auto-generate" className="h-10 w-full rounded-lg border border-brand-border bg-white px-3 text-sm outline-none transition focus:border-brand-forest focus:ring-2 focus:ring-brand-forest/10" /><span className="block text-xs font-normal text-brand-muted">Must be unique. Leave blank to auto-generate a code.</span></label><label className="space-y-1.5 text-sm font-medium text-brand-text"><span>Category <span className="text-red-500">*</span></span><select value={form.category} onChange={e => set("category", e.target.value)} className="h-10 w-full rounded-lg border border-brand-border bg-white px-3 text-sm outline-none focus:border-brand-forest focus:ring-2 focus:ring-brand-forest/10"><option value="" disabled>Select category</option>{categories.map(category => <option key={category.id}>{category.name}</option>)}</select>{errors.category && <span className="text-xs font-normal text-red-600">{errors.category}</span>}</label>{field("GSTIN", "gstin")}{field("Rating", "rating", "number")}</div>
       </section>
       <section className="rounded-xl border border-brand-border bg-white p-5 shadow-sm">
         <h2 className="m-0 text-base font-semibold text-brand-forest">Primary contact</h2>

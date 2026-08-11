@@ -25,4 +25,4 @@ export interface Vendor {
   certificationStatus: string;
 }
 
-export type VendorInput = Omit<Vendor, "id" | "code" | "registeredOn">;
+export type VendorInput = Omit<Vendor, "id" | "code" | "registeredOn"> & { code?: string };

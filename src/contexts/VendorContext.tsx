@@ -18,7 +18,7 @@ export function VendorProvider({ children }: { children: ReactNode }) {
   const value = useMemo<VendorContextValue>(() => ({
     vendors,
     async addVendor(input) {
-      const code = `VEN-${Date.now().toString().slice(-8)}`;
+      const code = input.code?.trim() || `VEN-${Date.now().toString().slice(-8)}`;
       const vendor = await vendorApi.create(input, code);
       setVendors(current => [vendor, ...current]); return vendor;
     },

@@ -110,12 +110,14 @@ export function DashboardPage() {
   const announce = (message: string) => { setNotice(message); window.setTimeout(() => setNotice(""), 3000); };
 
   useEffect(() => {
-    void operationsApi.summary().then(setSummary).catch(() => setSummaryError(true));
-    void operationsApi.vehicles().then(setVehicles).catch(() => setVehiclesError(true));
-    void operationsApi.invoices().then(setInvoices).catch(() => setInvoicesError(true));
-    void operationsApi.approvals().then(setApprovals).catch(() => setApprovalsError(true));
-    void operationsApi.auditLogs().then(setAuditLogs).catch(() => setAuditError(true));
-    void operationsApi.vendors().then(setVendors).catch(() => undefined);
+    let cancelled = false;
+    void operationsApi.summary().then(data => { if (!cancelled) setSummary(data); }).catch(() => { if (!cancelled) setSummaryError(true); });
+    void operationsApi.vehicles().then(data => { if (!cancelled) setVehicles(data); }).catch(() => { if (!cancelled) setVehiclesError(true); });
+    void operationsApi.invoices().then(data => { if (!cancelled) setInvoices(data); }).catch(() => { if (!cancelled) setInvoicesError(true); });
+    void operationsApi.approvals().then(data => { if (!cancelled) setApprovals(data); }).catch(() => { if (!cancelled) setApprovalsError(true); });
+    void operationsApi.auditLogs().then(data => { if (!cancelled) setAuditLogs(data); }).catch(() => { if (!cancelled) setAuditError(true); });
+    void operationsApi.vendors().then(data => { if (!cancelled) setVendors(data); }).catch(() => undefined);
+    return () => { cancelled = true; };
   }, []);
 
   const vendorName = (id: string) => vendors.find(v => v.id === id)?.legal_name ?? "Unknown vendor";

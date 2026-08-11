@@ -19,7 +19,7 @@ export function VendorsPage() {
   const rows = useMemo(() => vendors.filter(v => (status === "All" || v.status === status) && (category === "All" || v.category === category) && `${v.name} ${v.code} ${v.contactPerson} ${v.email}`.toLowerCase().includes(query.toLowerCase())), [vendors,status,category,query]);
   const selected = drawer.mode === "details" || drawer.mode === "edit" ? getVendor(drawer.vendorId) : undefined;
   const close = () => setDrawer({ mode:"closed" });
-  const editValue = (vendor: Vendor): VendorInput => { const { id:_id,code:_code,registeredOn:_date,...value }=vendor; return value; };
+  const editValue = (vendor: Vendor): VendorInput => { const { id:_id,registeredOn:_date,...value }=vendor; return value; };
 
   function exportCsv() { const csv=["Code,Name,Category,Contact,Email,Phone,Status",...rows.map(v=>[v.code,v.name,v.category,v.contactPerson,v.email,v.phone,v.status].map(x=>`"${x}"`).join(","))].join("\n"); const url=URL.createObjectURL(new Blob([csv],{type:"text/csv"})); const link=document.createElement("a");link.href=url;link.download="vendors.csv";link.click();URL.revokeObjectURL(url); }
   function remove(vendor: Vendor) { if (window.confirm(`Delete ${vendor.name}?`)) { void deleteVendor(vendor.id); close(); } }

@@ -7,6 +7,8 @@ import { DocumentsPage } from "@/pages/Documents/DocumentsPage.tsx";
 import { LoginPage } from "@/pages/Auth/LoginPage.tsx";
 import { ProtectedRoute } from "@/routes/ProtectedRoute.tsx";
 import { VendorProvider } from "@/contexts/VendorContext";
+import { VendorCategoryProvider } from "@/contexts/VendorCategoryContext";
+import { VendorCategoriesPage } from "@/pages/Settings/VendorCategoriesPage";
 import { VehiclesPage } from "@/pages/Vehicles/VehiclesPage.tsx";
 import { InvoicesPage } from "@/pages/Invoices/InvoicesPage.tsx";
 import { UsersPage } from "@/pages/Users/UsersPage.tsx";
@@ -20,27 +22,13 @@ import { DeliveriesPage } from "@/pages/Procurement/DeliveriesPage";
 import { DeliveryFormPage } from "@/pages/Procurement/DeliveryFormPage";
 import { DeliveryDetailsPage } from "@/pages/Procurement/DeliveryDetailsPage";
 
-function PlaceholderPage({ title }: { title: string }) {
-  return (
-    <section>
-      <h1 className="m-0 text-2xl font-semibold text-brand-forest">
-        {title}
-      </h1>
-
-      <p className="mb-0 mt-2 text-sm text-brand-muted">
-        This page is ready for implementation.
-      </p>
-    </section>
-  );
-}
-
 export function AppRoutes() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
       <Route path="/" element={<Navigate to="/login" replace />} />
       <Route element={<ProtectedRoute />}>
-      <Route element={<VendorProvider><AppLayout /></VendorProvider>}>
+      <Route element={<VendorProvider><VendorCategoryProvider><AppLayout /></VendorCategoryProvider></VendorProvider>}>
         <Route path="dashboard" element={<DashboardPage />} />
 
         <Route path="vendors" element={<VendorsPage />} />
@@ -70,7 +58,7 @@ export function AppRoutes() {
 
         <Route
           path="settings"
-          element={<PlaceholderPage title="Settings" />}
+          element={<VendorCategoriesPage />}
         />
 
         <Route path="reports" element={<ReportsPage />} />
