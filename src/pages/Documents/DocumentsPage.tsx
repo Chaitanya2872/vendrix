@@ -5,9 +5,10 @@ import {
   Clock, AlertCircle, CheckCircle, FileWarning, Edit, ShieldCheck,
 } from "lucide-react";
 import { useVendors } from "@/contexts/VendorContext";
-import { DocumentPreview } from "../../components/documents/document preview";
+import { DocumentPreview } from "../../components/documents/document_preview";
 import { UploadDocumentModal, type UploadPayload } from "../../components/documents/uploaddocument";
-import { deleteDocument, listDocuments, uploadDocument } from "@/api/documents";
+import { deleteDocument, getDocument, listDocuments, toDocumentUiStatus, uploadDocument, type ExtractedInvoiceFields } from "@/api/documents";
+import { useNavigate } from "react-router-dom";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 export type DocumentStatus = "Valid" | "Expiring soon" | "Expired" | "Under review" | "Draft";
@@ -15,6 +16,7 @@ export type VendorDocument = {
   id: string; name: string; vendorId: string; category: string;
   uploadedOn: string; expiresOn: string | null; status: DocumentStatus;
   size: string; lastModified: string; starred?: boolean; tags?: string[]; uploadedBy?: string;
+  documentType?: string; extractedFields?: ExtractedInvoiceFields;
 };
 
 // ─── Data ──────────────────────────────────────────────────────────────────────
@@ -132,12 +134,33 @@ const StatCard = ({ label, value, sub, subTone = "text-brand-muted", icon: Icon,
 // ─── Person avatar (initials) ───────────────────────────────────────────────────
 const initialsOf = (name: string) => name.split(" ").map(word => word[0]).slice(0, 2).join("");
 
+const isInvoiceDocument = (doc: Pick<VendorDocument, "category" | "documentType">) =>
+  (doc.documentType ?? doc.category).trim().toUpperCase() === "INVOICE";
+
 // ─── Page ──────────────────────────────────────────────────────────────────────
 export function DocumentsPage() {
   const { vendors } = useVendors();
+  const navigate = useNavigate();
   const [documents, setDocuments] = useState<VendorDocument[]>([]);
 
-  useEffect(() => { void listDocuments().then(items => setDocuments(items.map(item => ({ id:item.id, name:item.filename, vendorId:"", category:item.document_type, uploadedOn:item.created_at.slice(0,10), expiresOn:null, status:item.status === "REVIEW_REQUIRED" ? "Under review" : item.status === "CONFIRMED" ? "Valid" : "Draft", size:"—", lastModified:item.created_at, uploadedBy:"You" })))).catch(console.error); }, []);
+  useEffect(() => {
+    void listDocuments()
+      .then(items => setDocuments(items.map(item => ({
+        id: item.id,
+        name: item.filename,
+        vendorId: "",
+        category: item.document_type,
+        documentType: item.document_type,
+        uploadedOn: item.created_at.slice(0, 10),
+        expiresOn: null,
+        status: toDocumentUiStatus(item.status),
+        size: "—",
+        lastModified: item.created_at,
+        uploadedBy: "You",
+        extractedFields: item.extracted_fields as ExtractedInvoiceFields | undefined,
+      }))))
+      .catch(console.error);
+  }, []);
 
   const [query,           setQuery]           = useState("");
   const [sortBy,          setSortBy]          = useState<"latest"|"oldest"|"name">("latest");
@@ -162,9 +185,44 @@ export function DocumentsPage() {
     return () => document.removeEventListener("mousedown", h);
   }, []);
 
+  const applyDocumentUpdate = (id: string, fields: ExtractedInvoiceFields | undefined, status: string) => {
+    const patch = { extractedFields: fields, status: toDocumentUiStatus(status) };
+    setPreviewDoc(current => (current && current.id === id ? { ...current, ...patch } : current));
+    setDocuments(current => current.map(doc => (doc.id === id ? { ...doc, ...patch } : doc)));
+  };
+
+  // The list endpoint returns a lean projection without extracted_fields (see
+  // DocumentListItem on the backend), and invoice parsing runs in the
+  // background after upload. So fetch the full document when a preview opens,
+  // and keep polling while an invoice has no fields yet.
+  useEffect(() => {
+    const id = previewDoc?.id;
+    if (!id) return;
+    const awaitingParse = previewDoc ? isInvoiceDocument(previewDoc) : false;
+    let cancelled = false;
+    let attempts = 0;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+
+    const hydrate = () => {
+      void getDocument(id).then(fresh => {
+        if (cancelled) return;
+        const fields = fresh.extracted_fields as ExtractedInvoiceFields | undefined;
+        applyDocumentUpdate(id, fields, fresh.status);
+        // Keep polling until real results land: an in_progress payload is a
+        // stage update, not the finished extraction. OCR can take a while,
+        // so allow a generous window before giving up.
+        const settled = fields != null && !fields.in_progress;
+        if (!settled && awaitingParse && ++attempts < 40) timer = setTimeout(hydrate, 1500);
+      }).catch(() => {});
+    };
+    hydrate();
+
+    return () => { cancelled = true; if (timer) clearTimeout(timer); };
+  }, [previewDoc?.id]);
+
   const vendorById   = useMemo(() => new Map(vendors.map(v => [v.id, v])), [vendors]);
-  const allCategories = useMemo(() => [...new Set(documents.map(d => d.category))], []);
-  const allTags       = useMemo(() => [...new Set(documents.flatMap(d => d.tags ?? []))], []);
+  const allCategories = useMemo(() => [...new Set(documents.map(d => d.category))], [documents]);
+  const allTags       = useMemo(() => [...new Set(documents.flatMap(d => d.tags ?? []))], [documents]);
 
   // ── Overview stats (derived straight from the document list) ──
   const stats = useMemo(() => {
@@ -179,7 +237,7 @@ export function DocumentsPage() {
     const complianceScore = totalFiles > 0 ? Math.round((validCount / totalFiles) * 100) : 100;
 
     return { totalFiles, newThisWeek, pendingReview, expiringSoon, complianceScore };
-  }, []);
+  }, [documents]);
 
   const rows = useMemo(() => {
     const now = new Date();
@@ -207,7 +265,7 @@ export function DocumentsPage() {
         if (sortBy === "name")   return a.name.localeCompare(b.name);
         return b.uploadedOn.localeCompare(a.uploadedOn);
       });
-  }, [query, filterType, filterTag, filterDate, sortBy, vendorById]);
+  }, [documents, query, filterType, filterTag, filterDate, sortBy, vendorById]);
 
   const recentDocs    = useMemo(() => [...rows].sort((a, b) => b.uploadedOn.localeCompare(a.uploadedOn)).slice(0, 3), [rows]);
   const filtersActive = filterType !== "all" || filterTag !== "all" || filterDate !== "any";
@@ -232,7 +290,7 @@ export function DocumentsPage() {
         </button>
       </div>
 
-      {/* ── Stats ── */}
+      {/* ── Stats ──
       <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard
           label="Total files"
@@ -270,7 +328,7 @@ export function DocumentsPage() {
             </div>
           </div>
         </article>
-      </section>
+      </section> */}
 
       {/* ── Toolbar ── */}
       <div className="flex flex-wrap items-center gap-2">
@@ -566,13 +624,76 @@ export function DocumentsPage() {
           onDownload={id => console.log("download", id)}
           onDelete={async id => { await deleteDocument(id); setDocuments(current => current.filter(document => document.id !== id)); setPreviewDoc(null); }}
           onToggleStar={id => console.log("star", id)}
+          onFieldsSaved={fields => applyDocumentUpdate(previewDoc.id, fields, "CONFIRMED")}
+          onReviewInvoice={isInvoiceDocument(previewDoc) ? () => {
+            const fields = previewDoc.extractedFields ?? {};
+            setPreviewDoc(null);
+            navigate("/invoices/add", {
+              state: {
+                documentId: previewDoc.id,
+                invoice_number: fields.invoice_number ?? undefined,
+                invoice_date: fields.invoice_date ?? undefined,
+                due_date: fields.due_date ?? undefined,
+                amount: fields.subtotal ?? undefined,
+                tax_amount: fields.tax_amount ?? undefined,
+                vendor_gstin: fields.vendor_gstin ?? undefined,
+                vendor_name: fields.vendor_name ?? undefined,
+                warnings: fields.warnings ?? [],
+                validation_errors: fields.validation_errors ?? [],
+                parsing_confidence: fields.parsing_confidence ?? undefined,
+                line_items: fields.line_items ?? [],
+              },
+            });
+          } : undefined}
         />
       )}
       {showUpload && (
         <UploadDocumentModal
           vendors={vendors}
           onClose={() => setShowUpload(false)}
-          onUpload={async (payload: UploadPayload) => { const created = await Promise.all(payload.files.map(file => uploadDocument(file, payload.category))); setDocuments(current => [...created.map(item => ({ id:item.id, name:item.filename, vendorId:payload.vendorId, category:item.document_type, uploadedOn:item.created_at.slice(0,10), expiresOn:payload.expiresOn || null, status:"Under review" as const, size:"—", lastModified:item.created_at, uploadedBy:"You" })), ...current]); setShowUpload(false); }}
+          onUpload={async (payload: UploadPayload) => {
+            const created = await Promise.all(payload.files.map(file =>
+              uploadDocument(file, payload.category, percent => payload.onFileProgress?.(file, percent)),
+            ));
+            const mapped: VendorDocument[] = created.map(item => ({
+              id: item.id,
+              name: item.filename,
+              vendorId: payload.vendorId,
+              category: item.document_type,
+              documentType: item.document_type,
+              uploadedOn: item.created_at.slice(0, 10),
+              expiresOn: payload.expiresOn || null,
+              status: toDocumentUiStatus(item.status),
+              size: "—",
+              lastModified: item.created_at,
+              uploadedBy: "You",
+              extractedFields: item.extracted_fields as ExtractedInvoiceFields | undefined,
+            }));
+            setDocuments(current => [...mapped, ...current]);
+            // The modal closes itself once its success animation has played.
+
+            // Invoice parsing runs in the background (same dispatch as the
+            // rest of the document pipeline), so the status/extracted_fields
+            // above reflect "just uploaded", not the finished parse. Poll
+            // once, a few seconds later, so the row updates itself to
+            // "Under review" with extracted data without a manual refresh.
+            const invoiceUploads = mapped.filter(isInvoiceDocument);
+            if (invoiceUploads.length > 0) {
+              setTimeout(() => {
+                void Promise.all(invoiceUploads.map(doc => getDocument(doc.id).catch(() => null))).then(results => {
+                  setDocuments(current => current.map(doc => {
+                    const refreshed = results.find(result => result?.id === doc.id);
+                    if (!refreshed) return doc;
+                    return {
+                      ...doc,
+                      status: toDocumentUiStatus(refreshed.status),
+                      extractedFields: refreshed.extracted_fields as ExtractedInvoiceFields | undefined,
+                    };
+                  }));
+                });
+              }, 4000);
+            }
+          }}
         />
       )}
     </div>

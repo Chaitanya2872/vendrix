@@ -47,6 +47,17 @@ input {
   --animate-fade-in: fade-in 0.5s ease-out both;
   --animate-float-slow: float-slow 7s ease-in-out infinite;
   --animate-shimmer: shimmer 2.2s linear infinite;
+
+  /* Action feedback: upload progress and save confirmation. Shorter and
+     snappier than the page-entrance animations above, since they respond to
+     a click rather than introducing content. */
+  --animate-pop-in: pop-in 0.3s cubic-bezier(0.2, 0.8, 0.3, 1.15) both;
+  --animate-check-draw: check-draw 0.4s 0.08s ease-out both;
+  --animate-success-ring: success-ring 0.9s ease-out;
+  --animate-rise-in: rise-in 0.35s cubic-bezier(0.2, 0.8, 0.3, 1) both;
+  --animate-bar-stripe: bar-stripe 0.9s linear infinite;
+  --animate-float: float 1.6s ease-in-out infinite;
+  --animate-scan-sweep: scan-sweep 2.4s cubic-bezier(0.45, 0, 0.55, 1) infinite;
 }
 
 @keyframes fade-in-up {
@@ -85,4 +96,97 @@ input {
   100% {
     background-position: 200% 0;
   }
+}
+
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: scale(0.55);
+  }
+  60% {
+    transform: scale(1.08);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* Draws the tick by retracting its dash offset; pairs with a path whose
+   stroke-dasharray is set to its own length. */
+@keyframes check-draw {
+  from {
+    stroke-dashoffset: 24;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes success-ring {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-brand-forest) 45%, transparent);
+  }
+  100% {
+    box-shadow: 0 0 0 12px transparent;
+  }
+}
+
+/* A shorter sibling of fade-in-up, for list rows that appear in a stagger
+   rather than for page-level entrances. */
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Moving hatch overlaid on an in-flight progress bar, so a stalled upload
+   still reads as "working" even when the percentage doesn't move. */
+@keyframes bar-stripe {
+  from {
+    background-position: 0 0;
+  }
+  to {
+    background-position: 28px 0;
+  }
+}
+
+@keyframes float {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-4px);
+  }
+}
+
+/* Scanner beam travelling down the document preview during extraction.
+   Overshoots both edges so the band enters and leaves cleanly. */
+@keyframes scan-sweep {
+  0% {
+    top: -35%;
+    opacity: 0;
+  }
+  15%, 85% {
+    opacity: 1;
+  }
+  100% {
+    top: 100%;
+    opacity: 0;
+  }
+}
+
+.progress-stripe {
+  background-image: linear-gradient(
+    115deg,
+    rgba(255, 255, 255, 0.35) 25%, transparent 25%,
+    transparent 50%, rgba(255, 255, 255, 0.35) 50%,
+    rgba(255, 255, 255, 0.35) 75%, transparent 75%
+  );
+  background-size: 28px 28px;
 }

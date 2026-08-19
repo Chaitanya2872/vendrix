@@ -15,6 +15,8 @@ import { UsersPage } from "@/pages/Users/UsersPage.tsx";
 import { ReportsPage } from "@/pages/Reports/ReportsPage.tsx";
 import { AddVehiclePage } from "@/pages/Vehicles/AddVehiclePage.tsx";
 import { AddInvoicePage } from "@/pages/Invoices/AddInvoicePage.tsx";
+import { InvoiceExtractionPage } from "@/pages/Invoices/InvoiceExtractionPage.tsx";
+import { InvoiceReviewPage } from "@/pages/Invoices/InvoiceReviewPage.tsx";
 import { PurchasesPage } from "@/pages/Procurement/PurchasesPage";
 import { PurchaseFormPage } from "@/pages/Procurement/PurchaseFormPage";
 import { PurchaseDetailsPage } from "@/pages/Procurement/PurchaseDetailsPage";
@@ -40,6 +42,10 @@ export function AppRoutes() {
 
         <Route path="invoices" element={<InvoicesPage />} />
         <Route path="invoices/add" element={<AddInvoicePage />} />
+        <Route path="invoices/extract" element={<InvoiceExtractionPage />} />
+        {/* Document id is the human-facing DOC-2026-000001, which is what
+            the upload response hands back and what a user can read out. */}
+        <Route path="invoices/review/:documentId" element={<InvoiceReviewPage />} />
 
         <Route path="purchases" element={<PurchasesPage />} />
         <Route path="purchases/new" element={<PurchaseFormPage />} />

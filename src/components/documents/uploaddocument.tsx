@@ -1,10 +1,19 @@
 // uploaddocument.tsx
 import { useRef, useState, type DragEvent } from "react";
-import { X, UploadCloud, File as FileIcon, Trash2, Loader2, CheckCircle2 } from "lucide-react";
+import { X, UploadCloud, File as FileIcon, Trash2, Loader2, CheckCircle2, TriangleAlert } from "lucide-react";
+import { AnimatedCheck } from "../ui/AnimatedCheck";
 
 type VendorOption = { id: string; name: string };
 type PendingFile  = { id: string; file: File };
-export type UploadPayload = { files: File[]; vendorId: string; category: string; expiresOn: string };
+export type UploadPayload = {
+  files: File[];
+  vendorId: string;
+  category: string;
+  expiresOn: string;
+  /** Lets the page stream real per-file upload progress back into this
+   * modal's progress bars while it drives the requests. */
+  onFileProgress?: (file: File, percent: number) => void;
+};
 
 type Props = {
   vendors: VendorOption[];
@@ -13,7 +22,10 @@ type Props = {
   onUpload: (payload: UploadPayload) => Promise<void>;
 };
 
-const DEFAULT_CATEGORIES = ["Certification","Legal document","Tax document","Insurance","Agreement","Policy"];
+const DEFAULT_CATEGORIES = ["Invoice","Certification","Legal document","Tax document","Insurance","Agreement","Policy"];
+
+/** idle → sending (bars fill) → done (tick draws, modal closes itself). */
+type Phase = "idle" | "sending" | "done" | "error";
 
 export function UploadDocumentModal({ vendors, categories = DEFAULT_CATEGORIES, onClose, onUpload }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
@@ -22,7 +34,9 @@ export function UploadDocumentModal({ vendors, categories = DEFAULT_CATEGORIES, 
   const [vendorId,     setVendorId]     = useState(vendors[0]?.id ?? "");
   const [category,     setCategory]     = useState(categories[0] ?? "");
   const [expiresOn,    setExpiresOn]    = useState("");
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [phase,        setPhase]        = useState<Phase>("idle");
+  const [progress,     setProgress]     = useState<Record<string, number>>({});
+  const isSubmitting = phase === "sending";
 
   const addFiles = (list: FileList | null) => {
     if (!list?.length) return;
@@ -37,7 +51,32 @@ export function UploadDocumentModal({ vendors, categories = DEFAULT_CATEGORIES, 
     e.preventDefault(); setIsDragging(false); addFiles(e.dataTransfer.files);
   };
 
-  const canSubmit = pending.length > 0 && Boolean(vendorId) && Boolean(category) && !isSubmitting;
+  const canSubmit = pending.length > 0 && Boolean(vendorId) && Boolean(category) && (phase === "idle" || phase === "error");
+
+  const handleSubmit = async () => {
+    if (!canSubmit) return;
+    setPhase("sending");
+    setProgress(Object.fromEntries(pending.map(entry => [entry.id, 0])));
+    try {
+      await onUpload({
+        files: pending.map(entry => entry.file),
+        vendorId,
+        category,
+        expiresOn,
+        onFileProgress: (file, percent) => {
+          const entry = pending.find(candidate => candidate.file === file);
+          if (entry) setProgress(current => ({ ...current, [entry.id]: percent }));
+        },
+      });
+      setProgress(Object.fromEntries(pending.map(entry => [entry.id, 100])));
+      setPhase("done");
+      // Hold the finished state briefly so the tick actually plays, then
+      // dismiss. The page no longer closes this dialog itself.
+      setTimeout(onClose, 1100);
+    } catch {
+      setPhase("error");
+    }
+  };
 
   return (
     <div
@@ -45,10 +84,10 @@ export function UploadDocumentModal({ vendors, categories = DEFAULT_CATEGORIES, 
       aria-modal="true"
       aria-labelledby="upload-title"
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/15 p-4 backdrop-blur-[2px]"
-      onClick={onClose}
+      onClick={() => { if (phase !== "sending" && phase !== "done") onClose(); }}
     >
       <div
-        className="flex w-full max-w-2xl flex-col overflow-hidden rounded-3xl bg-white shadow-2xl ring-1 ring-black/[0.07]"
+        className={`animate-pop-in flex w-full max-w-2xl flex-col overflow-hidden rounded-3xl bg-white shadow-2xl ring-1 transition-shadow ${phase === "done" ? "animate-success-ring ring-brand-forest/30" : "ring-black/[0.07]"}`}
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}
@@ -62,20 +101,22 @@ export function UploadDocumentModal({ vendors, categories = DEFAULT_CATEGORIES, 
         <div className="space-y-4 overflow-y-auto px-6 pb-6" style={{ maxHeight: "72vh" }}>
           {/* Drop zone */}
           <div
-            onDragOver={e => { e.preventDefault(); setIsDragging(true); }}
+            onDragOver={e => { e.preventDefault(); if (!isSubmitting) setIsDragging(true); }}
             onDragLeave={() => setIsDragging(false)}
             onDrop={handleDrop}
-            onClick={() => inputRef.current?.click()}
+            onClick={() => { if (!isSubmitting) inputRef.current?.click(); }}
             role="button"
             tabIndex={0}
-            onKeyDown={e => { if (e.key === "Enter" || e.key === " ") inputRef.current?.click(); }}
-            className={`flex cursor-pointer flex-col items-center justify-center gap-3 rounded-2xl px-6 py-10 text-center transition-all ${
-              isDragging
-                ? "bg-brand-forest/5 ring-2 ring-brand-forest/30"
-                : "bg-gray-50 ring-1 ring-gray-200/80 hover:bg-gray-100/70"
+            onKeyDown={e => { if ((e.key === "Enter" || e.key === " ") && !isSubmitting) inputRef.current?.click(); }}
+            className={`flex flex-col items-center justify-center gap-3 rounded-2xl px-6 py-10 text-center transition-all duration-300 ${
+              isSubmitting || phase === "done"
+                ? "pointer-events-none scale-[0.98] opacity-50"
+                : isDragging
+                  ? "scale-[1.01] cursor-pointer bg-brand-forest/5 ring-2 ring-brand-forest/30"
+                  : "cursor-pointer bg-gray-50 ring-1 ring-gray-200/80 hover:bg-gray-100/70"
             }`}
           >
-            <div className={`flex h-11 w-11 items-center justify-center rounded-2xl shadow-sm transition-colors ${isDragging ? "bg-brand-forest/10 text-brand-forest" : "bg-white text-brand-gold-dark"}`}>
+            <div className={`flex h-11 w-11 items-center justify-center rounded-2xl shadow-sm transition-colors duration-300 ${isDragging ? "animate-float bg-brand-forest/10 text-brand-forest" : "bg-white text-brand-gold-dark"}`}>
               <UploadCloud className="h-5 w-5" />
             </div>
             <div>
@@ -88,24 +129,57 @@ export function UploadDocumentModal({ vendors, categories = DEFAULT_CATEGORIES, 
           {/* File list */}
           {pending.length > 0 && (
             <div className="space-y-2">
-              {pending.map(entry => (
-                <div key={entry.id} className="flex items-center gap-3 rounded-2xl bg-gray-50 px-4 py-3">
-                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white text-brand-gold-dark shadow-sm ring-1 ring-black/[0.04]">
-                    <FileIcon className="h-4 w-4" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="m-0 truncate text-sm font-medium text-brand-text">{entry.file.name}</p>
-                    <p className="mb-0 mt-0.5 text-xs text-brand-muted">{formatBytes(entry.file.size)}</p>
-                  </div>
-                  <button
-                    onClick={() => setPending(p => p.filter(f => f.id !== entry.id))}
-                    className="shrink-0 rounded-lg p-1.5 text-gray-400 transition-colors hover:bg-white hover:text-gray-600"
-                    aria-label={`Remove ${entry.file.name}`}
+              {pending.map((entry, index) => {
+                const percent = progress[entry.id] ?? 0;
+                const complete = phase === "done" || percent >= 100;
+                return (
+                  <div
+                    key={entry.id}
+                    className="animate-rise-in flex items-center gap-3 rounded-2xl bg-gray-50 px-4 py-3"
+                    style={{ animationDelay: `${index * 45}ms` }}
                   >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
-                </div>
-              ))}
+                    <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white shadow-sm ring-1 transition-colors ${complete && phase !== "idle" ? "text-brand-forest ring-brand-forest/20" : "text-brand-gold-dark ring-black/[0.04]"}`}>
+                      {phase !== "idle" && complete
+                        ? <AnimatedCheck className="h-4 w-4" />
+                        : <FileIcon className="h-4 w-4" />}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="m-0 truncate text-sm font-medium text-brand-text">{entry.file.name}</p>
+                      {phase === "idle" || phase === "error" ? (
+                        <p className="mb-0 mt-0.5 text-xs text-brand-muted">{formatBytes(entry.file.size)}</p>
+                      ) : (
+                        <div className="mt-1.5 flex items-center gap-2">
+                          <div
+                            className="h-1.5 flex-1 overflow-hidden rounded-full bg-gray-200"
+                            role="progressbar"
+                            aria-valuenow={percent}
+                            aria-valuemin={0}
+                            aria-valuemax={100}
+                            aria-label={`Uploading ${entry.file.name}`}
+                          >
+                            <div
+                              className={`h-full rounded-full transition-[width] duration-300 ease-out ${complete ? "bg-brand-forest" : "progress-stripe animate-bar-stripe bg-brand-gold-dark"}`}
+                              style={{ width: `${Math.max(percent, 4)}%` }}
+                            />
+                          </div>
+                          <span className="w-9 shrink-0 text-right text-[11px] tabular-nums text-brand-muted">
+                            {complete ? "Done" : `${percent}%`}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                    {(phase === "idle" || phase === "error") && (
+                      <button
+                        onClick={() => setPending(p => p.filter(f => f.id !== entry.id))}
+                        className="shrink-0 rounded-lg p-1.5 text-gray-400 transition-colors hover:bg-white hover:text-gray-600"
+                        aria-label={`Remove ${entry.file.name}`}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           )}
 
@@ -150,20 +224,33 @@ export function UploadDocumentModal({ vendors, categories = DEFAULT_CATEGORIES, 
 
         {/* Footer */}
         <div className="flex items-center justify-end gap-2 px-6 pb-5">
+          {phase === "error" && (
+            <p className="animate-rise-in mr-auto mb-0 inline-flex items-center gap-1.5 text-xs text-red-600">
+              <TriangleAlert className="h-3.5 w-3.5" />Upload failed. Check the connection and try again.
+            </p>
+          )}
           <button
             onClick={onClose}
-            className="inline-flex h-9 items-center justify-center rounded-xl px-4 text-sm font-medium text-brand-muted transition-colors hover:bg-gray-50 hover:text-brand-text"
+            disabled={isSubmitting || phase === "done"}
+            className="inline-flex h-9 items-center justify-center rounded-xl px-4 text-sm font-medium text-brand-muted transition-colors hover:bg-gray-50 hover:text-brand-text disabled:opacity-40"
           >
             Cancel
           </button>
           <button
-            onClick={async () => { if (!canSubmit) return; setIsSubmitting(true); try { await onUpload({ files: pending.map(e => e.file), vendorId, category, expiresOn }); } finally { setIsSubmitting(false); } }}
+            onClick={handleSubmit}
             disabled={!canSubmit}
-            className="inline-flex h-9 items-center justify-center gap-2 rounded-xl bg-brand-forest px-5 text-sm font-semibold text-white shadow-sm transition-all hover:bg-brand-forest-light hover:shadow-md disabled:cursor-not-allowed disabled:opacity-50"
+            aria-live="polite"
+            className={`inline-flex h-9 items-center justify-center gap-2 rounded-xl px-5 text-sm font-semibold text-white shadow-sm transition-all duration-300 disabled:cursor-not-allowed ${
+              phase === "done"
+                ? "bg-brand-forest"
+                : "bg-brand-forest hover:bg-brand-forest-light hover:shadow-md disabled:opacity-50"
+            }`}
           >
-            {isSubmitting
-              ? <><Loader2 className="h-4 w-4 animate-spin" />Uploading…</>
-              : <><CheckCircle2 className="h-4 w-4" />Upload{pending.length > 0 ? ` (${pending.length})` : ""}</>}
+            {phase === "sending" && <><Loader2 className="h-4 w-4 animate-spin" />Uploading…</>}
+            {phase === "done"    && <><AnimatedCheck className="h-4 w-4" />Uploaded</>}
+            {(phase === "idle" || phase === "error") && (
+              <><CheckCircle2 className="h-4 w-4" />{phase === "error" ? "Retry upload" : "Upload"}{pending.length > 0 ? ` (${pending.length})` : ""}</>
+            )}
           </button>
         </div>
       </div>
