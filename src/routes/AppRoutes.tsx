@@ -3,6 +3,7 @@ import { AppLayout } from "@/components/layout/AppLayout.tsx";
 import { DashboardPage } from "@/pages/Dashboard/DashboardPage.tsx";
 import React from "react";
 import { VendorsPage } from "@/pages/Vendors/VendorsPage.tsx";
+import { AddVendorPage } from "@/pages/Vendors/AddVendorPage.tsx";
 import { DocumentsPage } from "@/pages/Documents/DocumentsPage.tsx";
 import { LoginPage } from "@/pages/Auth/LoginPage.tsx";
 import { ProtectedRoute } from "@/routes/ProtectedRoute.tsx";
@@ -34,6 +35,9 @@ export function AppRoutes() {
         <Route path="dashboard" element={<DashboardPage />} />
 
         <Route path="vendors" element={<VendorsPage />} />
+        {/* Reachable from every picker that can come up short: the vendor
+            you need not existing yet is the ordinary case, not an error. */}
+        <Route path="vendors/add" element={<AddVendorPage />} />
 
         <Route path="vehicles" element={<VehiclesPage />} />
         <Route path="vehicles/add" element={<AddVehiclePage />} />

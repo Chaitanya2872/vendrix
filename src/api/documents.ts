@@ -6,6 +6,11 @@ export type ApiDocument = {
   document_type: string;
   status: string;
   created_at: string;
+  /** Owning vendor, chosen at upload. Null for documents uploaded before the
+   * field existed, and for uploads where no vendor was picked. */
+  vendor_id?: string | null;
+  expires_on?: string | null;
+  size_bytes?: number | null;
   extracted_fields?: Record<string, unknown>;
   review_confirmed_at?: string | null;
 };
@@ -70,18 +75,32 @@ export async function getDocument(id: string): Promise<ApiDocument> {
   return data;
 }
 
+export type UploadOptions = {
+  /** Owning vendor. Optional — the backend stores the document unassigned
+   * when it is omitted, which is what "no vendor yet" has to mean while the
+   * user is still creating one. */
+  vendorId?: string;
+  /** ISO yyyy-mm-dd. */
+  expiresOn?: string;
+  onProgress?: (percent: number) => void;
+};
+
 /** `onProgress` reports 0–100 as the file is sent. The final few percent are
  * the server's own processing time, which the browser can't observe, so the
  * caller should keep showing activity until the promise resolves. */
 export async function uploadDocument(
   file: File,
   documentType: string,
-  onProgress?: (percent: number) => void,
+  options: UploadOptions = {},
 ): Promise<ApiDocument> {
+  const { vendorId, expiresOn, onProgress } = options;
   const form = new FormData();
   form.append("file", file);
+  const params = new URLSearchParams({ document_type: documentType });
+  if (vendorId) params.set("vendor_id", vendorId);
+  if (expiresOn) params.set("expires_on", expiresOn);
   const { data } = await api.post<ApiDocument>(
-    `/documents?document_type=${encodeURIComponent(documentType)}`,
+    `/documents?${params.toString()}`,
     form,
     onProgress && {
       onUploadProgress: event => {
@@ -127,6 +146,27 @@ export function toDocumentUiStatus(status: string): "Valid" | "Under review" | "
   if (status === "REVIEW_REQUIRED" || status === "PROCESSING") return "Under review";
   if (status === "CONFIRMED") return "Valid";
   return "Draft";
+}
+
+/** What the UI should show for a document whose extraction it is waiting on.
+ *
+ * Derived from the *status* first and the payload second. Reading only the
+ * payload — "no fields yet means still working" — is what left the preview
+ * spinning forever on documents whose parse had already finished and found
+ * nothing, or had failed: neither writes a field the poller was waiting for. */
+export type ExtractionState = "extracting" | "ready" | "empty" | "failed";
+
+export function extractionState(
+  status: string,
+  fields: ExtractedInvoiceFields | undefined,
+): ExtractionState {
+  if (status === "FAILED") return "failed";
+  if (fields?.in_progress) return "extracting";
+  // A terminal status with no payload means the parser finished without
+  // producing anything, not that results are still on their way.
+  if (fields != null) return "ready";
+  if (status === "UPLOADED" || status === "PROCESSING") return "extracting";
+  return "empty";
 }
 
 export async function lookupPlate(registrationNumber: string) {

@@ -7,7 +7,7 @@ import {
 import { useVendors } from "@/contexts/VendorContext";
 import { DocumentPreview } from "../../components/documents/document_preview";
 import { UploadDocumentModal, type UploadPayload } from "../../components/documents/uploaddocument";
-import { deleteDocument, getDocument, listDocuments, toDocumentUiStatus, uploadDocument, type ExtractedInvoiceFields } from "@/api/documents";
+import { deleteDocument, downloadDocument, extractionState, getDocument, listDocuments, toDocumentUiStatus, uploadDocument, type ApiDocument, type ExtractedInvoiceFields } from "@/api/documents";
 import { useNavigate } from "react-router-dom";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
@@ -17,6 +17,10 @@ export type VendorDocument = {
   uploadedOn: string; expiresOn: string | null; status: DocumentStatus;
   size: string; lastModified: string; starred?: boolean; tags?: string[]; uploadedBy?: string;
   documentType?: string; extractedFields?: ExtractedInvoiceFields;
+  /** Backend status verbatim. `status` above collapses PROCESSING and
+   * REVIEW_REQUIRED into "Under review", which is right for a badge and
+   * wrong for deciding whether extraction is still running. */
+  rawStatus?: string;
 };
 
 // ─── Data ──────────────────────────────────────────────────────────────────────
@@ -44,11 +48,36 @@ const SORT_OPTS = [
 ];
 
 const DATE_OPTS = [
-  { value:"any", label:"Any time"      },
-  { value:"30d", label:"Last 30 days"  },
-  { value:"3m",  label:"Last 3 months" },
-  { value:"1y",  label:"Last year"     },
+  { value:"any",    label:"Any time"      },
+  { value:"7d",     label:"Last 7 days"   },
+  { value:"30d",    label:"Last 30 days"  },
+  { value:"3m",     label:"Last 3 months" },
+  { value:"1y",     label:"Last year"     },
+  { value:"custom", label:"Custom range"  },
 ];
+
+const UNASSIGNED_VENDOR = "__none__";
+
+/** Local yyyy-mm-dd. `toISOString()` is UTC, which shifts the boundary by a
+ * day for anyone east or west of Greenwich — and the dates being compared
+ * here were themselves written down in local time. */
+function isoDay(value: Date) {
+  return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, "0")}-${String(value.getDate()).padStart(2, "0")}`;
+}
+
+/** The inclusive [from, to] window a date filter selects, as yyyy-mm-dd
+ * strings so comparison is a plain string compare against `uploadedOn`. An
+ * open end is undefined rather than a sentinel date. */
+function dateWindow(mode: string, from: string, to: string): { from?: string; to?: string } {
+  if (mode === "custom") return { from: from || undefined, to: to || undefined };
+  if (mode === "any") return {};
+  const cutoff = new Date();
+  if (mode === "7d")  cutoff.setDate(cutoff.getDate() - 7);
+  if (mode === "30d") cutoff.setDate(cutoff.getDate() - 30);
+  if (mode === "3m")  cutoff.setMonth(cutoff.getMonth() - 3);
+  if (mode === "1y")  cutoff.setFullYear(cutoff.getFullYear() - 1);
+  return { from: isoDay(cutoff) };
+}
 
 const CAT_COLORS: Record<string, string> = {
   "Certification":  "bg-violet-50 text-violet-700",
@@ -137,6 +166,37 @@ const initialsOf = (name: string) => name.split(" ").map(word => word[0]).slice(
 const isInvoiceDocument = (doc: Pick<VendorDocument, "category" | "documentType">) =>
   (doc.documentType ?? doc.category).trim().toUpperCase() === "INVOICE";
 
+/** One mapping from the API shape to the row shape, shared by the initial
+ * load and the post-upload insert. They drifted apart before — the upload
+ * path invented a vendor the list path left blank — and every filter that
+ * reads a field is only as correct as the less careful of the two. */
+function toVendorDocument(item: ApiDocument): VendorDocument {
+  return {
+    id: item.id,
+    name: item.filename,
+    vendorId: item.vendor_id ?? "",
+    category: item.document_type,
+    documentType: item.document_type,
+    uploadedOn: item.created_at.slice(0, 10),
+    expiresOn: item.expires_on ?? null,
+    status: toDocumentUiStatus(item.status),
+    rawStatus: item.status,
+    size: formatBytes(item.size_bytes),
+    lastModified: item.created_at,
+    uploadedBy: "You",
+    extractedFields: item.extracted_fields as ExtractedInvoiceFields | undefined,
+  };
+}
+
+function formatBytes(bytes: number | null | undefined) {
+  if (bytes == null) return "—";
+  if (bytes === 0) return "0 B";
+  const units = ["B", "KB", "MB", "GB"];
+  const exponent = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+  const value = bytes / Math.pow(1024, exponent);
+  return `${value.toFixed(value >= 10 || exponent === 0 ? 0 : 1)} ${units[exponent]}`;
+}
+
 // ─── Page ──────────────────────────────────────────────────────────────────────
 export function DocumentsPage() {
   const { vendors } = useVendors();
@@ -145,20 +205,7 @@ export function DocumentsPage() {
 
   useEffect(() => {
     void listDocuments()
-      .then(items => setDocuments(items.map(item => ({
-        id: item.id,
-        name: item.filename,
-        vendorId: "",
-        category: item.document_type,
-        documentType: item.document_type,
-        uploadedOn: item.created_at.slice(0, 10),
-        expiresOn: null,
-        status: toDocumentUiStatus(item.status),
-        size: "—",
-        lastModified: item.created_at,
-        uploadedBy: "You",
-        extractedFields: item.extracted_fields as ExtractedInvoiceFields | undefined,
-      }))))
+      .then(items => setDocuments(items.map(toVendorDocument)))
       .catch(console.error);
   }, []);
 
@@ -167,11 +214,28 @@ export function DocumentsPage() {
   const [filterType,      setFilterType]      = useState("all");
   const [filterTag,       setFilterTag]       = useState("all");
   const [filterDate,      setFilterDate]      = useState("any");
+  const [filterVendor,    setFilterVendor]    = useState("all");
+  const [dateFrom,        setDateFrom]        = useState("");
+  const [dateTo,          setDateTo]          = useState("");
+  const [vendorQuery,     setVendorQuery]     = useState("");
   const [showFilterPanel, setShowFilterPanel] = useState(false);
-  const [activeGroup,     setActiveGroup]     = useState<"type"|"tag"|"date"|null>(null);
+  const [activeGroup,     setActiveGroup]     = useState<"type"|"tag"|"date"|"vendor"|null>(null);
   const [showSortMenu,    setShowSortMenu]    = useState(false);
   const [previewDoc,      setPreviewDoc]      = useState<VendorDocument | null>(null);
   const [showUpload,      setShowUpload]      = useState(false);
+  // Progress of the *currently previewed* document's hydration, tagged with
+  // the id it describes. Tagging rather than resetting is what keeps this out
+  // of the effect body: opening a different document changes `previewDoc.id`,
+  // which stops matching, which is the reset — no synchronous setState, and
+  // no window in which a stale verdict is shown against a new document.
+  const [extractionUi, setExtractionUi] = useState<{ id: string | null; loaded: boolean; timedOut: boolean }>(
+    { id: null, loaded: false, timedOut: false },
+  );
+  // The list endpoint omits extracted_fields, so a row taken straight from it
+  // has no fields for a reason that has nothing to do with extraction. Until
+  // the first full fetch lands, the preview must not read "nothing was found".
+  const detailsLoaded      = extractionUi.id === previewDoc?.id && extractionUi.loaded;
+  const extractionTimedOut = extractionUi.id === previewDoc?.id && extractionUi.timedOut;
 
   const filterRef = useRef<HTMLDivElement>(null);
   const sortRef   = useRef<HTMLDivElement>(null);
@@ -186,39 +250,84 @@ export function DocumentsPage() {
   }, []);
 
   const applyDocumentUpdate = (id: string, fields: ExtractedInvoiceFields | undefined, status: string) => {
-    const patch = { extractedFields: fields, status: toDocumentUiStatus(status) };
+    const patch = { extractedFields: fields, status: toDocumentUiStatus(status), rawStatus: status };
     setPreviewDoc(current => (current && current.id === id ? { ...current, ...patch } : current));
     setDocuments(current => current.map(doc => (doc.id === id ? { ...doc, ...patch } : doc)));
   };
 
+  // How long the preview keeps waiting on an extraction before it says so.
+  // The pipeline targets well under this; the point of the ceiling is that a
+  // worker that died leaves a spinner that ends, not one that runs forever.
+  const EXTRACTION_TIMEOUT_MS = 45_000;
+
   // The list endpoint returns a lean projection without extracted_fields (see
   // DocumentListItem on the backend), and invoice parsing runs in the
   // background after upload. So fetch the full document when a preview opens,
-  // and keep polling while an invoice has no fields yet.
+  // and keep polling while the server still reports work in flight.
   useEffect(() => {
     const id = previewDoc?.id;
     if (!id) return;
     const awaitingParse = previewDoc ? isInvoiceDocument(previewDoc) : false;
     let cancelled = false;
-    let attempts = 0;
     let timer: ReturnType<typeof setTimeout> | undefined;
+    const startedAt = Date.now();
 
     const hydrate = () => {
       void getDocument(id).then(fresh => {
         if (cancelled) return;
         const fields = fresh.extracted_fields as ExtractedInvoiceFields | undefined;
         applyDocumentUpdate(id, fields, fresh.status);
-        // Keep polling until real results land: an in_progress payload is a
-        // stage update, not the finished extraction. OCR can take a while,
-        // so allow a generous window before giving up.
-        const settled = fields != null && !fields.in_progress;
-        if (!settled && awaitingParse && ++attempts < 40) timer = setTimeout(hydrate, 1500);
+        setExtractionUi({ id, loaded: true, timedOut: false });
+        // Stop on any settled state, not just "fields arrived". A parse that
+        // finished empty or failed writes no fields, and treating that as
+        // "still working" is what left the spinner running indefinitely.
+        if (!awaitingParse || extractionState(fresh.status, fields) !== "extracting") return;
+        if (Date.now() - startedAt >= EXTRACTION_TIMEOUT_MS) {
+          setExtractionUi({ id, loaded: true, timedOut: true });
+          return;
+        }
+        // Fast at first — most documents finish in the first couple of polls
+        // — then back off so a slow scan doesn't hammer the endpoint.
+        const elapsed = Date.now() - startedAt;
+        timer = setTimeout(hydrate, elapsed < 10_000 ? 800 : 2_500);
       }).catch(() => {});
     };
     hydrate();
 
     return () => { cancelled = true; if (timer) clearTimeout(timer); };
   }, [previewDoc?.id]);
+
+  /** Follow one freshly-uploaded document until the server stops reporting
+   * work in flight, patching the row each time. Bounded: a worker that never
+   * finishes leaves the row at whatever it last reported rather than an
+   * endless request loop nobody is watching. */
+  const trackUpload = async (id: string) => {
+    const deadline = Date.now() + 60_000;
+    while (Date.now() < deadline) {
+      await new Promise(resolve => setTimeout(resolve, 1_500));
+      const fresh = await getDocument(id).catch(() => null);
+      if (!fresh) return;
+      const fields = fresh.extracted_fields as ExtractedInvoiceFields | undefined;
+      setDocuments(current => current.map(doc =>
+        doc.id === id ? { ...doc, status: toDocumentUiStatus(fresh.status), rawStatus: fresh.status, extractedFields: fields } : doc,
+      ));
+      if (extractionState(fresh.status, fields) !== "extracting") return;
+    }
+  };
+
+  /** Fetch the stored file and hand it to the browser under its original
+   * name. The download endpoint is authenticated, so a plain link to it
+   * would 401 — the bytes have to come through the API client. */
+  const saveDocument = async (doc: VendorDocument) => {
+    const blob = await downloadDocument(doc.id).catch(() => null);
+    if (!blob) return;
+    const url = URL.createObjectURL(blob);
+    const link = window.document.createElement("a");
+    link.href = url;
+    link.download = doc.name;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
 
   const vendorById   = useMemo(() => new Map(vendors.map(v => [v.id, v])), [vendors]);
   const allCategories = useMemo(() => [...new Set(documents.map(d => d.category))], [documents]);
@@ -239,20 +348,21 @@ export function DocumentsPage() {
     return { totalFiles, newThisWeek, pendingReview, expiringSoon, complianceScore };
   }, [documents]);
 
+  const window_ = useMemo(() => dateWindow(filterDate, dateFrom, dateTo), [filterDate, dateFrom, dateTo]);
+
   const rows = useMemo(() => {
-    const now = new Date();
     const q = query.trim().toLowerCase();
     return [...documents]
       .filter(doc => {
         if (filterType !== "all" && doc.category !== filterType) return false;
         if (filterTag  !== "all" && !(doc.tags ?? []).includes(filterTag)) return false;
-        if (filterDate !== "any") {
-          const cutoff = new Date(now);
-          if (filterDate === "30d") cutoff.setDate(cutoff.getDate() - 30);
-          if (filterDate === "3m")  cutoff.setMonth(cutoff.getMonth() - 3);
-          if (filterDate === "1y")  cutoff.setFullYear(cutoff.getFullYear() - 1);
-          if (new Date(doc.uploadedOn) < cutoff) return false;
-        }
+        if (filterVendor === UNASSIGNED_VENDOR) { if (doc.vendorId) return false; }
+        else if (filterVendor !== "all" && doc.vendorId !== filterVendor) return false;
+        // Both ends inclusive, compared as yyyy-mm-dd strings — the format
+        // sorts lexicographically, so this needs no Date parsing and no
+        // timezone to get wrong.
+        if (window_.from && doc.uploadedOn < window_.from) return false;
+        if (window_.to   && doc.uploadedOn > window_.to)   return false;
         if (q) {
           const vendorName = vendorById.get(doc.vendorId)?.name?.toLowerCase() ?? "";
           const haystack = [doc.name, doc.category, doc.uploadedBy ?? "", vendorName, ...(doc.tags ?? [])].join(" ").toLowerCase();
@@ -265,11 +375,36 @@ export function DocumentsPage() {
         if (sortBy === "name")   return a.name.localeCompare(b.name);
         return b.uploadedOn.localeCompare(a.uploadedOn);
       });
-  }, [documents, query, filterType, filterTag, filterDate, sortBy, vendorById]);
+  }, [documents, query, filterType, filterTag, filterVendor, window_, sortBy, vendorById]);
+
+  // Only vendors that actually own a document are offered: a filter listing
+  // every vendor in the org is mostly rows that select nothing.
+  const vendorFacets = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const doc of documents) counts.set(doc.vendorId || UNASSIGNED_VENDOR, (counts.get(doc.vendorId || UNASSIGNED_VENDOR) ?? 0) + 1);
+    const entries = [...counts.entries()]
+      .filter(([id]) => id !== UNASSIGNED_VENDOR)
+      .map(([id, count]) => ({ id, name: vendorById.get(id)?.name ?? "Unknown vendor", count }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+    const unassigned = counts.get(UNASSIGNED_VENDOR) ?? 0;
+    return { entries, unassigned };
+  }, [documents, vendorById]);
+
+  const vendorLabel = (id: string) =>
+    id === UNASSIGNED_VENDOR ? "Unassigned" : vendorById.get(id)?.name ?? "Unknown vendor";
+
+  const dateLabel = filterDate === "custom"
+    ? (window_.from || window_.to
+        ? `${window_.from ? formatDate(window_.from) : "Any"} – ${window_.to ? formatDate(window_.to) : "Today"}`
+        : "Custom range")
+    : DATE_OPTS.find(o => o.value === filterDate)?.label ?? "Any time";
 
   const recentDocs    = useMemo(() => [...rows].sort((a, b) => b.uploadedOn.localeCompare(a.uploadedOn)).slice(0, 3), [rows]);
-  const filtersActive = filterType !== "all" || filterTag !== "all" || filterDate !== "any";
-  const clearAll      = () => { setFilterType("all"); setFilterTag("all"); setFilterDate("any"); };
+  const dateFilterOn  = filterDate !== "any" && (filterDate !== "custom" || Boolean(dateFrom || dateTo));
+  const filtersActive = filterType !== "all" || filterTag !== "all" || filterVendor !== "all" || dateFilterOn;
+  const activeCount   = [filterType !== "all", filterTag !== "all", filterVendor !== "all", dateFilterOn].filter(Boolean).length;
+  const clearDate     = () => { setFilterDate("any"); setDateFrom(""); setDateTo(""); };
+  const clearAll      = () => { setFilterType("all"); setFilterTag("all"); setFilterVendor("all"); clearDate(); };
 
   return (
     <div className="space-y-9 pb-10">
@@ -362,13 +497,13 @@ export function DocumentsPage() {
             Filters
             {filtersActive && (
               <span className="flex h-4 w-4 items-center justify-center rounded-full bg-brand-forest text-[9px] font-bold text-white">
-                {[filterType !== "all", filterTag !== "all", filterDate !== "any"].filter(Boolean).length}
+                {activeCount}
               </span>
             )}
           </button>
 
           {showFilterPanel && (
-            <div className="absolute left-0 top-[calc(100%+8px)] z-40 w-56 overflow-hidden rounded-2xl bg-white shadow-2xl ring-1 ring-black/[0.07]">
+            <div className="absolute left-0 top-[calc(100%+8px)] z-40 w-72 overflow-hidden rounded-2xl bg-white shadow-2xl ring-1 ring-black/[0.07]">
 
               {/* Level 1 — group list */}
               {!activeGroup && (
@@ -384,8 +519,13 @@ export function DocumentsPage() {
                     onClick={() => setActiveGroup("tag")}
                   />
                   <GroupRow
+                    label="Vendor"
+                    value={filterVendor === "all" ? "all" : vendorLabel(filterVendor)}
+                    onClick={() => { setActiveGroup("vendor"); setVendorQuery(""); }}
+                  />
+                  <GroupRow
                     label="Date"
-                    value={filterDate === "any" ? "all" : DATE_OPTS.find(o => o.value === filterDate)?.label ?? "all"}
+                    value={dateFilterOn ? dateLabel : "all"}
                     onClick={() => setActiveGroup("date")}
                   />
                   {filtersActive && (
@@ -433,6 +573,54 @@ export function DocumentsPage() {
                 </div>
               )}
 
+              {/* Level 2 — Vendor options */}
+              {activeGroup === "vendor" && (
+                <div className="px-1 py-2">
+                  <button
+                    onClick={() => setActiveGroup(null)}
+                    className="mb-1 flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-semibold uppercase tracking-widest text-gray-400 transition-colors hover:bg-gray-50"
+                  >
+                    <ChevronDown className="h-3 w-3 rotate-90" />
+                    Vendor
+                  </button>
+                  {vendorFacets.entries.length > 6 && (
+                    <div className="mx-2 mb-1 flex items-center gap-2 rounded-xl bg-gray-50 px-2.5 py-1.5 ring-1 ring-gray-200">
+                      <Search className="h-3.5 w-3.5 shrink-0 text-gray-400" />
+                      <input
+                        autoFocus
+                        value={vendorQuery}
+                        onChange={e => setVendorQuery(e.target.value)}
+                        placeholder="Search vendors…"
+                        className="w-full border-0 bg-transparent text-sm text-brand-text outline-none placeholder:text-gray-400"
+                      />
+                    </div>
+                  )}
+                  <div className="max-h-64 overflow-y-auto">
+                    <RadioOption checked={filterVendor === "all"} onChange={() => { setFilterVendor("all"); setActiveGroup(null); }} label="All vendors" />
+                    {vendorFacets.entries
+                      .filter(entry => entry.name.toLowerCase().includes(vendorQuery.trim().toLowerCase()))
+                      .map(entry => (
+                        <RadioOption
+                          key={entry.id}
+                          checked={filterVendor === entry.id}
+                          onChange={() => { setFilterVendor(entry.id); setActiveGroup(null); }}
+                          label={`${entry.name} (${entry.count})`}
+                        />
+                      ))}
+                    {vendorFacets.unassigned > 0 && (
+                      <RadioOption
+                        checked={filterVendor === UNASSIGNED_VENDOR}
+                        onChange={() => { setFilterVendor(UNASSIGNED_VENDOR); setActiveGroup(null); }}
+                        label={`Unassigned (${vendorFacets.unassigned})`}
+                      />
+                    )}
+                    {vendorFacets.entries.length === 0 && vendorFacets.unassigned === 0 && (
+                      <p className="px-3 py-2 text-sm text-brand-muted">No documents are filed against a vendor yet.</p>
+                    )}
+                  </div>
+                </div>
+              )}
+
               {/* Level 2 — Date options */}
               {activeGroup === "date" && (
                 <div className="px-1 py-2">
@@ -444,8 +632,59 @@ export function DocumentsPage() {
                     Date
                   </button>
                   {DATE_OPTS.map(opt => (
-                    <RadioOption key={opt.value} checked={filterDate === opt.value} onChange={() => { setFilterDate(opt.value); setActiveGroup(null); }} label={opt.label} />
+                    <RadioOption
+                      key={opt.value}
+                      checked={filterDate === opt.value}
+                      // A custom range keeps the panel open: picking it is the
+                      // start of choosing a range, not the end of it.
+                      onChange={() => { setFilterDate(opt.value); if (opt.value !== "custom") setActiveGroup(null); }}
+                      label={opt.label}
+                    />
                   ))}
+                  {filterDate === "custom" && (
+                    <div className="animate-rise-in mx-2 mb-1 mt-1 space-y-2 rounded-xl bg-gray-50 p-3 ring-1 ring-gray-200">
+                      <label className="block">
+                        <span className="mb-1 block text-[9px] font-bold uppercase tracking-[0.12em] text-gray-400">From</span>
+                        <input
+                          type="date"
+                          value={dateFrom}
+                          max={dateTo || undefined}
+                          onChange={e => setDateFrom(e.target.value)}
+                          className="h-9 w-full rounded-lg border border-gray-200 bg-white px-2.5 text-sm text-brand-text outline-none focus:border-brand-forest focus:ring-2 focus:ring-brand-forest/20"
+                        />
+                      </label>
+                      <label className="block">
+                        <span className="mb-1 block text-[9px] font-bold uppercase tracking-[0.12em] text-gray-400">To</span>
+                        <input
+                          type="date"
+                          value={dateTo}
+                          min={dateFrom || undefined}
+                          onChange={e => setDateTo(e.target.value)}
+                          className="h-9 w-full rounded-lg border border-gray-200 bg-white px-2.5 text-sm text-brand-text outline-none focus:border-brand-forest focus:ring-2 focus:ring-brand-forest/20"
+                        />
+                      </label>
+                      <div className="flex items-center justify-between pt-0.5">
+                        <button
+                          onClick={() => { setDateFrom(""); setDateTo(""); }}
+                          className="rounded-lg px-2 py-1 text-xs font-medium text-brand-muted transition-colors hover:bg-white hover:text-brand-text"
+                        >
+                          Reset
+                        </button>
+                        <button
+                          onClick={() => setActiveGroup(null)}
+                          className="rounded-lg bg-brand-forest px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-brand-forest-light"
+                        >
+                          Apply
+                        </button>
+                      </div>
+                      {/* Either end may be left open; only a backwards range
+                          is actually wrong, and saying so beats silently
+                          returning nothing. */}
+                      {dateFrom && dateTo && dateFrom > dateTo && (
+                        <p className="mb-0 text-xs text-red-600">The start date is after the end date.</p>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -479,9 +718,10 @@ export function DocumentsPage() {
         </div>
 
         {/* Active chips */}
-        {filterType !== "all" && <Chip label={`Type: ${filterType}`}  onRemove={() => setFilterType("all")} />}
-        {filterTag  !== "all" && <Chip label={`Tag: ${filterTag}`}    onRemove={() => setFilterTag("all")}  />}
-        {filterDate !== "any" && <Chip label={DATE_OPTS.find(o => o.value === filterDate)?.label ?? ""} onRemove={() => setFilterDate("any")} />}
+        {filterType   !== "all" && <Chip label={`Type: ${filterType}`}                  onRemove={() => setFilterType("all")}   />}
+        {filterTag    !== "all" && <Chip label={`Tag: ${filterTag}`}                    onRemove={() => setFilterTag("all")}    />}
+        {filterVendor !== "all" && <Chip label={`Vendor: ${vendorLabel(filterVendor)}`} onRemove={() => setFilterVendor("all")} />}
+        {dateFilterOn           && <Chip label={dateLabel}                              onRemove={clearDate}                    />}
       </div>
 
       {/* ── Folders ── */}
@@ -546,10 +786,10 @@ export function DocumentsPage() {
         <div className="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-black/[0.04]">
           {rows.length > 0 ? (
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[820px] border-collapse text-left">
+              <table className="w-full min-w-[940px] border-collapse text-left">
                 <thead>
                   <tr className="border-b border-brand-border bg-gray-50/80">
-                    {["Name","Type","Tags","Size","Modified","Owner"].map(h => (
+                    {["Name","Type","Vendor","Tags","Size","Modified","Owner"].map(h => (
                       <th key={h} className="whitespace-nowrap px-5 py-3 text-left text-[10px] font-bold uppercase tracking-[0.12em] text-gray-400">{h}</th>
                     ))}
                   </tr>
@@ -573,6 +813,11 @@ export function DocumentsPage() {
                         <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold ${CAT_COLORS[doc.category] ?? "bg-gray-50 text-gray-500"}`}>
                           {doc.category}
                         </span>
+                      </td>
+                      <td className="px-5 py-3.5 text-sm">
+                        {doc.vendorId
+                          ? <span className="text-brand-text">{vendorById.get(doc.vendorId)?.name ?? "Unknown vendor"}</span>
+                          : <span className="text-gray-300">Unassigned</span>}
                       </td>
                       <td className="px-5 py-3.5">
                         <div className="flex flex-wrap gap-1">
@@ -621,7 +866,9 @@ export function DocumentsPage() {
           document={previewDoc}
           vendor={vendorById.get(previewDoc.vendorId)}
           onClose={() => setPreviewDoc(null)}
-          onDownload={id => console.log("download", id)}
+          extractionTimedOut={extractionTimedOut}
+          detailsLoaded={detailsLoaded}
+          onDownload={() => void saveDocument(previewDoc)}
           onDelete={async id => { await deleteDocument(id); setDocuments(current => current.filter(document => document.id !== id)); setPreviewDoc(null); }}
           onToggleStar={id => console.log("star", id)}
           onFieldsSaved={fields => applyDocumentUpdate(previewDoc.id, fields, "CONFIRMED")}
@@ -651,48 +898,26 @@ export function DocumentsPage() {
         <UploadDocumentModal
           vendors={vendors}
           onClose={() => setShowUpload(false)}
+          onCreateVendor={() => { setShowUpload(false); navigate("/vendors/add?returnTo=/documents"); }}
           onUpload={async (payload: UploadPayload) => {
             const created = await Promise.all(payload.files.map(file =>
-              uploadDocument(file, payload.category, percent => payload.onFileProgress?.(file, percent)),
+              uploadDocument(file, payload.category, {
+                vendorId: payload.vendorId,
+                expiresOn: payload.expiresOn,
+                onProgress: percent => payload.onFileProgress?.(file, percent),
+              }),
             ));
-            const mapped: VendorDocument[] = created.map(item => ({
-              id: item.id,
-              name: item.filename,
-              vendorId: payload.vendorId,
-              category: item.document_type,
-              documentType: item.document_type,
-              uploadedOn: item.created_at.slice(0, 10),
-              expiresOn: payload.expiresOn || null,
-              status: toDocumentUiStatus(item.status),
-              size: "—",
-              lastModified: item.created_at,
-              uploadedBy: "You",
-              extractedFields: item.extracted_fields as ExtractedInvoiceFields | undefined,
-            }));
+            const mapped = created.map(toVendorDocument);
             setDocuments(current => [...mapped, ...current]);
             // The modal closes itself once its success animation has played.
 
             // Invoice parsing runs in the background (same dispatch as the
             // rest of the document pipeline), so the status/extracted_fields
             // above reflect "just uploaded", not the finished parse. Poll
-            // once, a few seconds later, so the row updates itself to
-            // "Under review" with extracted data without a manual refresh.
+            // until each one settles so the row updates itself to its real
+            // status and extracted data without a manual refresh.
             const invoiceUploads = mapped.filter(isInvoiceDocument);
-            if (invoiceUploads.length > 0) {
-              setTimeout(() => {
-                void Promise.all(invoiceUploads.map(doc => getDocument(doc.id).catch(() => null))).then(results => {
-                  setDocuments(current => current.map(doc => {
-                    const refreshed = results.find(result => result?.id === doc.id);
-                    if (!refreshed) return doc;
-                    return {
-                      ...doc,
-                      status: toDocumentUiStatus(refreshed.status),
-                      extractedFields: refreshed.extracted_fields as ExtractedInvoiceFields | undefined,
-                    };
-                  }));
-                });
-              }, 4000);
-            }
+            for (const doc of invoiceUploads) void trackUpload(doc.id);
           }}
         />
       )}

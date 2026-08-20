@@ -1,6 +1,6 @@
 // uploaddocument.tsx
 import { useRef, useState, type DragEvent } from "react";
-import { X, UploadCloud, File as FileIcon, Trash2, Loader2, CheckCircle2, TriangleAlert } from "lucide-react";
+import { X, UploadCloud, File as FileIcon, Trash2, Loader2, CheckCircle2, TriangleAlert, Plus } from "lucide-react";
 import { AnimatedCheck } from "../ui/AnimatedCheck";
 
 type VendorOption = { id: string; name: string };
@@ -20,6 +20,10 @@ type Props = {
   categories?: string[];
   onClose: () => void;
   onUpload: (payload: UploadPayload) => Promise<void>;
+  /** Leaves this dialog for the vendor form. Owned by the page because
+   * navigating unmounts the dialog, so it has to be the page's decision
+   * what happens to the files staged here. */
+  onCreateVendor?: () => void;
 };
 
 const DEFAULT_CATEGORIES = ["Invoice","Certification","Legal document","Tax document","Insurance","Agreement","Policy"];
@@ -27,11 +31,11 @@ const DEFAULT_CATEGORIES = ["Invoice","Certification","Legal document","Tax docu
 /** idle → sending (bars fill) → done (tick draws, modal closes itself). */
 type Phase = "idle" | "sending" | "done" | "error";
 
-export function UploadDocumentModal({ vendors, categories = DEFAULT_CATEGORIES, onClose, onUpload }: Props) {
+export function UploadDocumentModal({ vendors, categories = DEFAULT_CATEGORIES, onClose, onUpload, onCreateVendor }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [pending,      setPending]      = useState<PendingFile[]>([]);
   const [isDragging,   setIsDragging]   = useState(false);
-  const [vendorId,     setVendorId]     = useState(vendors[0]?.id ?? "");
+  const [vendorId,     setVendorId]     = useState("");
   const [category,     setCategory]     = useState(categories[0] ?? "");
   const [expiresOn,    setExpiresOn]    = useState("");
   const [phase,        setPhase]        = useState<Phase>("idle");
@@ -51,7 +55,10 @@ export function UploadDocumentModal({ vendors, categories = DEFAULT_CATEGORIES, 
     e.preventDefault(); setIsDragging(false); addFiles(e.dataTransfer.files);
   };
 
-  const canSubmit = pending.length > 0 && Boolean(vendorId) && Boolean(category) && (phase === "idle" || phase === "error");
+  // Vendor is deliberately not required. A document filed against no vendor
+  // is recoverable — it shows as "Unassigned" and can be reassigned — while a
+  // blocked upload just loses the file the user was holding.
+  const canSubmit = pending.length > 0 && Boolean(category) && (phase === "idle" || phase === "error");
 
   const handleSubmit = async () => {
     if (!canSubmit) return;
@@ -186,15 +193,32 @@ export function UploadDocumentModal({ vendors, categories = DEFAULT_CATEGORIES, 
           {/* Form */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label htmlFor="upl-vendor" className="mb-1.5 block text-[9px] font-bold uppercase tracking-[0.12em] text-gray-400">Vendor</label>
+              <label htmlFor="upl-vendor" className="mb-1.5 block text-[9px] font-bold uppercase tracking-[0.12em] text-gray-400">
+                Vendor <span className="font-normal normal-case text-gray-300">(optional)</span>
+              </label>
               <select
                 id="upl-vendor"
                 value={vendorId}
                 onChange={e => setVendorId(e.target.value)}
                 className="h-10 w-full rounded-xl bg-gray-50 px-3 text-sm text-brand-text outline-none ring-1 ring-gray-200 transition-all focus:bg-white focus:ring-brand-forest/40"
               >
+                <option value="">{vendors.length ? "No vendor" : "No vendors yet"}</option>
                 {vendors.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
               </select>
+              {onCreateVendor && (
+                <p className="mb-0 mt-1.5 flex items-center gap-1 text-xs text-brand-muted">
+                  <Plus className="h-3 w-3 shrink-0 text-brand-forest" />
+                  {vendors.length ? "Vendor not listed?" : "No vendors yet —"}{" "}
+                  <button
+                    type="button"
+                    onClick={onCreateVendor}
+                    disabled={isSubmitting || phase === "done"}
+                    className="font-medium text-brand-forest hover:underline disabled:no-underline disabled:opacity-40"
+                  >
+                    Create one
+                  </button>
+                </p>
+              )}
             </div>
             <div>
               <label htmlFor="upl-cat" className="mb-1.5 block text-[9px] font-bold uppercase tracking-[0.12em] text-gray-400">Category</label>

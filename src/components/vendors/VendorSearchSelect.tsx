@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
-import { Search } from "lucide-react";
+import { Plus, Search } from "lucide-react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import type { VendorOption } from "@/api/operations";
 
@@ -13,12 +14,23 @@ export function VendorSearchSelect({ vendors, name, required, defaultValue, clas
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [selectedId, setSelectedId] = useState(defaultValue ?? "");
+  const navigate = useNavigate();
+  const location = useLocation();
   const selected = vendors.find(v => v.id === selectedId);
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return vendors;
     return vendors.filter(v => `${v.legal_name} ${v.vendor_code}`.toLowerCase().includes(q));
   }, [vendors, query]);
+
+  // Send the user to the vendor form and back again. Without the return
+  // path, "create the vendor you need" costs whatever was already typed
+  // into the form this picker sits in, which is a worse trade than
+  // abandoning the upload.
+  const createVendor = () => {
+    setOpen(false);
+    navigate(`/vendors/add?returnTo=${encodeURIComponent(location.pathname + location.search)}`);
+  };
 
   return (
     <div className="relative">
@@ -45,7 +57,11 @@ export function VendorSearchSelect({ vendors, name, required, defaultValue, clas
             />
           </div>
           <div className="max-h-60 overflow-auto py-1">
-            {filtered.length === 0 && <p className="px-3 py-2 text-sm text-brand-muted">No vendors match.</p>}
+            {filtered.length === 0 && (
+              <p className="m-0 px-3 py-2 text-sm text-brand-muted">
+                {vendors.length === 0 ? "No vendors yet." : "No vendors match."}
+              </p>
+            )}
             {filtered.map(v => (
               <button
                 key={v.id}
@@ -57,8 +73,25 @@ export function VendorSearchSelect({ vendors, name, required, defaultValue, clas
               </button>
             ))}
           </div>
+          {/* Always offered, not only when the search comes up empty: the
+              vendor a user cannot find is often one they never created. */}
+          <button
+            type="button"
+            onClick={createVendor}
+            className="flex w-full items-center gap-2 border-t border-brand-border px-3 py-2.5 text-left text-sm font-medium text-brand-forest transition-colors hover:bg-brand-background"
+          >
+            <Plus className="h-4 w-4 shrink-0" />
+            Create new vendor
+          </button>
         </PopoverContent>
       </Popover>
+      <p className="mb-0 mt-1.5 text-xs text-brand-muted">
+        Vendor not listed?{" "}
+        <button type="button" onClick={createVendor} className="font-medium text-brand-forest hover:underline">
+          Create one
+        </button>{" "}
+        and you'll come straight back here.
+      </p>
     </div>
   );
 }
