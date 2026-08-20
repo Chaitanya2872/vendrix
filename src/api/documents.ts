@@ -142,10 +142,22 @@ export async function reviewDocument(id: string, fields: Record<string, unknown>
 /** Maps the raw backend document status to the UI's five-value status enum
  * used across DocumentsPage/DocumentPreview. Centralised here so upload and
  * initial-load paths never drift out of sync with each other again. */
-export function toDocumentUiStatus(status: string): "Valid" | "Under review" | "Draft" {
+export function toDocumentUiStatus(status: string): "Valid" | "Under review" | "Queued" | "Failed" | "Draft" {
   if (status === "REVIEW_REQUIRED" || status === "PROCESSING") return "Under review";
   if (status === "CONFIRMED") return "Valid";
+  // UPLOADED means accepted but not yet read. It used to render as "Draft",
+  // which reads as something the user left half-finished rather than
+  // something the system has not got to — the wrong party to blame, and no
+  // hint that waiting or retrying is the thing to do.
+  if (status === "UPLOADED") return "Queued";
+  if (status === "FAILED") return "Failed";
   return "Draft";
+}
+
+/** Run extraction again for a document that has none. Rejected with 409 when
+ * one is already running, so the button cannot start a second. */
+export async function reprocessDocument(id: string): Promise<void> {
+  await api.post(`/documents/${id}/reprocess`);
 }
 
 /** What the UI should show for a document whose extraction it is waiting on.
@@ -154,18 +166,34 @@ export function toDocumentUiStatus(status: string): "Valid" | "Under review" | "
  * payload — "no fields yet means still working" — is what left the preview
  * spinning forever on documents whose parse had already finished and found
  * nothing, or had failed: neither writes a field the poller was waiting for. */
-export type ExtractionState = "extracting" | "ready" | "empty" | "failed";
+export type ExtractionState = "extracting" | "ready" | "empty" | "failed" | "stranded";
+
+/** How long a document may sit accepted-but-unread before we stop calling it
+ * "in progress". Generously longer than the slowest real extraction, and far
+ * shorter than the time a user will stare at a progress list that is not
+ * describing anything actually happening. */
+const STRANDED_AFTER_MS = 3 * 60_000;
 
 export function extractionState(
   status: string,
   fields: ExtractedInvoiceFields | undefined,
+  /** When the document was accepted. Lets a long-stranded upload be told
+   * apart from one queued a moment ago — the two look identical from the
+   * status alone. */
+  queuedAt?: string | null,
 ): ExtractionState {
   if (status === "FAILED") return "failed";
   if (fields?.in_progress) return "extracting";
   // A terminal status with no payload means the parser finished without
   // producing anything, not that results are still on their way.
   if (fields != null) return "ready";
-  if (status === "UPLOADED" || status === "PROCESSING") return "extracting";
+  if (status === "UPLOADED" || status === "PROCESSING") {
+    // Nothing has claimed this in minutes, so nothing is going to without
+    // being asked again. Saying so at once beats making the reader wait out
+    // a timeout to be told the same thing.
+    if (queuedAt && Date.now() - new Date(queuedAt).getTime() > STRANDED_AFTER_MS) return "stranded";
+    return "extracting";
+  }
   return "empty";
 }
 

@@ -7,11 +7,11 @@ import {
 import { useVendors } from "@/contexts/VendorContext";
 import { DocumentPreview } from "../../components/documents/document_preview";
 import { UploadDocumentModal, type UploadPayload } from "../../components/documents/uploaddocument";
-import { deleteDocument, downloadDocument, extractionState, getDocument, listDocuments, toDocumentUiStatus, uploadDocument, type ApiDocument, type ExtractedInvoiceFields } from "@/api/documents";
+import { deleteDocument, downloadDocument, extractionState, getDocument, listDocuments, reprocessDocument, toDocumentUiStatus, uploadDocument, type ApiDocument, type ExtractedInvoiceFields } from "@/api/documents";
 import { useNavigate } from "react-router-dom";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
-export type DocumentStatus = "Valid" | "Expiring soon" | "Expired" | "Under review" | "Draft";
+export type DocumentStatus = "Valid" | "Expiring soon" | "Expired" | "Under review" | "Queued" | "Failed" | "Draft";
 export type VendorDocument = {
   id: string; name: string; vendorId: string; category: string;
   uploadedOn: string; expiresOn: string | null; status: DocumentStatus;
@@ -96,6 +96,8 @@ export const StatusBadge = ({ status }: { status: DocumentStatus }) => {
     "Expiring soon": { cls:"bg-amber-50  text-amber-700  border-amber-200",    Icon:Clock       },
     "Expired":       { cls:"bg-red-50    text-red-700    border-red-200",       Icon:AlertCircle },
     "Under review":  { cls:"bg-sky-50    text-sky-700    border-sky-200",       Icon:FileWarning },
+    "Queued":        { cls:"bg-gray-50   text-gray-600   border-gray-200",      Icon:Clock       },
+    "Failed":        { cls:"bg-red-50    text-red-700    border-red-200",       Icon:AlertCircle },
     "Draft":         { cls:"bg-gray-50   text-gray-500   border-gray-200",      Icon:Edit        },
   };
   const { cls, Icon } = cfg[status];
@@ -228,14 +230,23 @@ export function DocumentsPage() {
   // of the effect body: opening a different document changes `previewDoc.id`,
   // which stops matching, which is the reset — no synchronous setState, and
   // no window in which a stale verdict is shown against a new document.
-  const [extractionUi, setExtractionUi] = useState<{ id: string | null; loaded: boolean; timedOut: boolean }>(
-    { id: null, loaded: false, timedOut: false },
-  );
+  // Bumped to re-run the preview's poll for a document it is already showing.
+  // The effect keys on the document id, and re-reading the *same* document
+  // does not change it.
+  const [pollNonce, setPollNonce] = useState(0);
+  const [extractionUi, setExtractionUi] = useState<{
+    id: string | null; loaded: boolean; timedOut: boolean;
+    /** Set when *this session* re-queued the document. Without it, a retry on
+     * a long-stranded document is judged by its original upload time and is
+     * declared stranded again the instant it is pressed. */
+    queuedAt?: number;
+  }>({ id: null, loaded: false, timedOut: false });
   // The list endpoint omits extracted_fields, so a row taken straight from it
   // has no fields for a reason that has nothing to do with extraction. Until
   // the first full fetch lands, the preview must not read "nothing was found".
   const detailsLoaded      = extractionUi.id === previewDoc?.id && extractionUi.loaded;
   const extractionTimedOut = extractionUi.id === previewDoc?.id && extractionUi.timedOut;
+  const requeuedAt         = extractionUi.id === previewDoc?.id ? extractionUi.queuedAt : undefined;
 
   const filterRef = useRef<HTMLDivElement>(null);
   const sortRef   = useRef<HTMLDivElement>(null);
@@ -277,13 +288,19 @@ export function DocumentsPage() {
         if (cancelled) return;
         const fields = fresh.extracted_fields as ExtractedInvoiceFields | undefined;
         applyDocumentUpdate(id, fields, fresh.status);
-        setExtractionUi({ id, loaded: true, timedOut: false });
+        setExtractionUi(current => ({
+          id, loaded: true, timedOut: false,
+          queuedAt: current.id === id ? current.queuedAt : undefined,
+        }));
         // Stop on any settled state, not just "fields arrived". A parse that
         // finished empty or failed writes no fields, and treating that as
         // "still working" is what left the spinner running indefinitely.
-        if (!awaitingParse || extractionState(fresh.status, fields) !== "extracting") return;
+        if (!awaitingParse || extractionState(fresh.status, fields, fresh.created_at) !== "extracting") return;
         if (Date.now() - startedAt >= EXTRACTION_TIMEOUT_MS) {
-          setExtractionUi({ id, loaded: true, timedOut: true });
+          setExtractionUi(current => ({
+            id, loaded: true, timedOut: true,
+            queuedAt: current.id === id ? current.queuedAt : undefined,
+          }));
           return;
         }
         // Fast at first — most documents finish in the first couple of polls
@@ -295,7 +312,7 @@ export function DocumentsPage() {
     hydrate();
 
     return () => { cancelled = true; if (timer) clearTimeout(timer); };
-  }, [previewDoc?.id]);
+  }, [previewDoc?.id, pollNonce]);
 
   /** Follow one freshly-uploaded document until the server stops reporting
    * work in flight, patching the row each time. Bounded: a worker that never
@@ -311,8 +328,20 @@ export function DocumentsPage() {
       setDocuments(current => current.map(doc =>
         doc.id === id ? { ...doc, status: toDocumentUiStatus(fresh.status), rawStatus: fresh.status, extractedFields: fields } : doc,
       ));
-      if (extractionState(fresh.status, fields) !== "extracting") return;
+      if (extractionState(fresh.status, fields, fresh.created_at) !== "extracting") return;
     }
+  };
+
+  /** Ask the server to read this document again, then resume polling. Used
+   * by the preview's retry action when an extraction never ran or produced
+   * nothing — the alternative being re-uploading the same file. */
+  const retryExtraction = async (id: string) => {
+    await reprocessDocument(id);
+    // Drop the stale payload so the panel returns to its progress state
+    // instead of showing the previous verdict while the retry runs.
+    applyDocumentUpdate(id, undefined, "PROCESSING");
+    setExtractionUi({ id, loaded: true, timedOut: false, queuedAt: Date.now() });
+    setPollNonce(nonce => nonce + 1);
   };
 
   /** Fetch the stored file and hand it to the browser under its original
@@ -868,6 +897,8 @@ export function DocumentsPage() {
           onClose={() => setPreviewDoc(null)}
           extractionTimedOut={extractionTimedOut}
           detailsLoaded={detailsLoaded}
+          onRetryExtraction={() => retryExtraction(previewDoc.id)}
+          requeuedAt={requeuedAt}
           onDownload={() => void saveDocument(previewDoc)}
           onDelete={async id => { await deleteDocument(id); setDocuments(current => current.filter(document => document.id !== id)); setPreviewDoc(null); }}
           onToggleStar={id => console.log("star", id)}

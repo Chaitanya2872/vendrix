@@ -27,6 +27,14 @@ type DocumentPreviewProps = {
    * fields — reporting "nothing was found" before the fetch lands would be a
    * verdict on data nobody has looked at yet. */
   detailsLoaded?: boolean;
+  /** Run extraction again. Offered on every outcome that left no fields —
+   * the previous copy told the reader to "reopen this document shortly",
+   * which is advice rather than a way out. */
+  onRetryExtraction?: () => Promise<void> | void;
+  /** When this session last asked for the document to be re-read. Takes
+   * precedence over the upload time in deciding whether an extraction is
+   * genuinely in flight. */
+  requeuedAt?: number;
 };
 
 /** The editable subset of the parsed invoice. `line_items`, confidence and
@@ -49,7 +57,7 @@ const EDITABLE_FIELDS: { key: keyof ExtractedInvoiceFields; label: string; numer
   { key: "total_amount",    label: "Total amount", numeric: true },
 ];
 
-export function DocumentPreview({ document, vendor, onClose, onDownload, onDelete, onToggleStar, onReviewInvoice, onFieldsSaved, extractionTimedOut, detailsLoaded = true }: DocumentPreviewProps) {
+export function DocumentPreview({ document, vendor, onClose, onDownload, onDelete, onToggleStar, onReviewInvoice, onFieldsSaved, extractionTimedOut, detailsLoaded = true, onRetryExtraction, requeuedAt }: DocumentPreviewProps) {
   const [fileUrl, setFileUrl] = useState<string | null>(null);
   const [previewError, setPreviewError] = useState(false);
   const [officePreview, setOfficePreview] = useState<DocumentPreviewData | null>(null);
@@ -57,12 +65,17 @@ export function DocumentPreview({ document, vendor, onClose, onDownload, onDelet
   // half-typed number never collapses to NaN mid-keystroke.
   const [draft, setDraft] = useState<Record<string, string>>({});
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [retryState, setRetryState] = useState<"idle" | "retrying" | "error">("idle");
   // While parsing runs the server publishes progress into the same field the
   // results land in, flagged with in_progress. Ask the shared state machine
   // rather than testing for the payload here: a parse that finished empty or
   // failed writes no fields either, and reading that as "still working" is
   // what used to leave this panel spinning indefinitely.
-  const state = extractionState(document.rawStatus ?? "", document.extractedFields);
+  const state = extractionState(
+    document.rawStatus ?? "",
+    document.extractedFields,
+    requeuedAt ? new Date(requeuedAt).toISOString() : document.lastModified,
+  );
   // Before the fetch lands, treat the document as still working: it is the
   // one reading that is never wrong to show for a second and never leaves a
   // wrong verdict on screen.
@@ -79,7 +92,7 @@ export function DocumentPreview({ document, vendor, onClose, onDownload, onDelet
 
   useEffect(() => {
     let url: string | null = null;
-    setPreviewError(false); setFileUrl(null); setOfficePreview(null);
+    setPreviewError(false); setFileUrl(null); setOfficePreview(null); setRetryState("idle");
     void downloadDocument(document.id).then(blob => { url = URL.createObjectURL(blob); setFileUrl(url); }).catch(() => setPreviewError(true));
     if (!previewableImage && !previewablePdf) void getDocumentPreview(document.id).then(setOfficePreview).catch(() => setPreviewError(true));
     return () => { if (url) URL.revokeObjectURL(url); };
@@ -263,8 +276,18 @@ export function DocumentPreview({ document, vendor, onClose, onDownload, onDelet
                   // finding anything, it failed, or the wait was abandoned.
                   // Each says so and offers the form, rather than animating.
                   <ExtractionOutcome
-                    state={extractionTimedOut && state === "extracting" ? "timeout" : state === "failed" ? "failed" : "empty"}
+                    state={state === "stranded" || (extractionTimedOut && state === "extracting") ? "unread" : state === "failed" ? "failed" : "empty"}
                     onOpenForm={onReviewInvoice}
+                    retryState={retryState}
+                    onRetry={onRetryExtraction && (async () => {
+                      setRetryState("retrying");
+                      try {
+                        await onRetryExtraction();
+                        setRetryState("idle");
+                      } catch {
+                        setRetryState("error");
+                      }
+                    })}
                   />
                 )}
               </div>
@@ -314,7 +337,17 @@ export function DocumentPreview({ document, vendor, onClose, onDownload, onDelet
               <img src={fileUrl} alt={document.name} className="mx-auto max-w-full rounded-xl bg-white shadow-sm" />
             </div>
           )}
-          {fileUrl && previewablePdf && <iframe src={fileUrl} title={document.name} className="h-full w-full flex-1 border-0 bg-white" />}
+          {/* `view=FitH` fits the page to the panel width. Without it the
+              built-in PDF viewer opens at its own default zoom, which on a
+              wide panel renders the page as a stamp in a field of grey. The
+              toolbar is left on: it is how a reader zooms and pages. */}
+          {fileUrl && previewablePdf && (
+            <iframe
+              src={`${fileUrl}#view=FitH&navpanes=0`}
+              title={document.name}
+              className="h-full w-full flex-1 border-0 bg-white"
+            />
+          )}
           {fileUrl && officePreview?.type === "document" && (
             <div className="flex-1 overflow-y-auto p-4 sm:p-6">
               <div className="mx-auto max-w-3xl rounded-xl bg-white px-6 py-5 text-left text-sm leading-7 text-brand-text shadow-sm">
@@ -364,12 +397,18 @@ export function DocumentPreview({ document, vendor, onClose, onDownload, onDelet
 }
 
 /** Terminal extraction outcomes. Each is a dead end for the automatic path,
- * so each ends on the manual one rather than on an apology. */
-const ExtractionOutcome = ({ state, onOpenForm }: { state: "empty" | "failed" | "timeout"; onOpenForm?: () => void }) => {
+ * so each offers both ways forward — try again, or do it by hand — rather
+ * than describing the problem and stopping there. */
+const ExtractionOutcome = ({ state, onOpenForm, onRetry, retryState = "idle" }: {
+  state: "empty" | "failed" | "unread";
+  onOpenForm?: () => void;
+  onRetry?: () => void;
+  retryState?: "idle" | "retrying" | "error";
+}) => {
   const copy = {
-    empty:   { icon: FileQuestion,  text: "Nothing could be read from this document. Enter the details by hand on the invoice form." },
-    failed:  { icon: TriangleAlert, text: "Extraction failed for this document. Enter the details by hand on the invoice form." },
-    timeout: { icon: RotateCw,      text: "Extraction is taking longer than expected. Reopen this document shortly, or fill the invoice form in by hand." },
+    empty:   { icon: FileQuestion,  text: "Nothing could be read from this document. Try reading it again, or enter the details by hand." },
+    failed:  { icon: TriangleAlert, text: "Extraction failed for this document. Try again, or enter the details by hand." },
+    unread:  { icon: RotateCw,      text: "This document has not been read yet. That usually means the extraction service was busy or restarted when it was uploaded." },
   }[state];
   const Icon = copy.icon;
   return (
@@ -378,13 +417,32 @@ const ExtractionOutcome = ({ state, onOpenForm }: { state: "empty" | "failed" | 
         <Icon className="mt-0.5 h-4 w-4 shrink-0 text-brand-gold-dark" />
         <span>{copy.text}</span>
       </p>
-      {onOpenForm && (
-        <button
-          onClick={onOpenForm}
-          className="mt-3 inline-flex h-9 items-center gap-2 rounded-xl bg-white px-4 text-sm font-semibold text-brand-text ring-1 ring-gray-200 transition-colors hover:bg-gray-50"
-        >
-          Open invoice form
-        </button>
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        {onRetry && (
+          <button
+            onClick={onRetry}
+            disabled={retryState === "retrying"}
+            className="inline-flex h-9 items-center gap-2 rounded-xl bg-brand-forest px-4 text-sm font-semibold text-white shadow-sm transition-all hover:bg-brand-forest-light hover:shadow-md disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {retryState === "retrying"
+              ? <Loader2 className="h-4 w-4 animate-spin" />
+              : <RotateCw className="h-4 w-4" />}
+            {retryState === "retrying" ? "Reading…" : "Read it again"}
+          </button>
+        )}
+        {onOpenForm && (
+          <button
+            onClick={onOpenForm}
+            className="inline-flex h-9 items-center gap-2 rounded-xl bg-white px-4 text-sm font-semibold text-brand-text ring-1 ring-gray-200 transition-colors hover:bg-gray-50"
+          >
+            Enter by hand
+          </button>
+        )}
+      </div>
+      {retryState === "error" && (
+        <p className="mb-0 mt-2 text-xs text-red-600">
+          That did not start. The document may already be being read — close this and reopen it in a moment.
+        </p>
       )}
     </div>
   );
